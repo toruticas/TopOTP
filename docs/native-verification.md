@@ -12,19 +12,20 @@ O modelo anterior com data protection Keychain e `SecAccessControl.userPresence`
 
 ## Resultados reais
 
-| Verificação                                                                      | Resultado                                                      |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Swift: adicionar/ler/remover item sintético no Keychain tradicional              | Status 0 em todas as operações                                 |
-| Swift: outro executável, identidade diferente, sem interação de Keychain         | Leitura negada, status -25293                                  |
-| Rust/objc2: adicionar/ler/atualizar/remover item sintético                       | Status 0 em todas as operações                                 |
-| Preflight LocalAuthentication                                                    | Touch ID e device owner disponíveis; preflight não autentica   |
-| `.app` ad hoc: painel inicia bloqueado, interface empacotada `tauri://localhost` | Observado via UI nativa                                        |
-| Touch ID no aplicativo                                                           | **Usuário confirmou: “Eu consegui desbloquear pelo touch id”** |
-| Assinaturas dos bundles arm64/x86_64                                             | Verificação `codesign --verify --deep --strict` aprovada       |
-| Senha do macOS e cancelamento/recusa nativos                                     | Ainda pendentes                                                |
-| Build final: clique no ícone da barra de menus                                   | Usuário confirmou: “Sim, o painel aparece”                     |
-| Runtime arm64 local                                                              | Iniciado sem listener TCP; assets empacotados e CSP local      |
-| Instância única                                                                  | Segunda execução encaminhou abertura à instância existente     |
+| Verificação                                                                                  | Resultado                                                      |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Swift: adicionar/ler/remover item sintético no Keychain tradicional                          | Status 0 em todas as operações                                 |
+| Swift: outro executável, identidade diferente, sem interação de Keychain                     | Leitura negada, status -25293                                  |
+| Rust/objc2: adicionar/ler/atualizar/remover item sintético                                   | Status 0 em todas as operações                                 |
+| Preflight LocalAuthentication                                                                | Touch ID e device owner disponíveis; preflight não autentica   |
+| `.app` ad hoc: painel inicia bloqueado, interface empacotada `tauri://localhost`             | Observado via UI nativa                                        |
+| Touch ID no aplicativo                                                                       | **Usuário confirmou: “Eu consegui desbloquear pelo touch id”** |
+| Assinaturas dos bundles arm64/x86_64                                                         | Verificação `codesign --verify --deep --strict` aprovada       |
+| Senha do macOS e cancelamento/recusa nativos                                                 | Ainda pendentes                                                |
+| Build final: clique no ícone da barra de menus                                               | Usuário confirmou: “Sim, o painel aparece”                     |
+| Build `6b4907a`: painel abaixo do ícone e retomada após clicar fora/reabrir em menos de 30 s | Usuário confirmou ambos no macOS: “Sim, os dois funcionam”     |
+| Runtime arm64 local                                                                          | Iniciado sem listener TCP; assets empacotados e CSP local      |
+| Instância única                                                                              | Segunda execução encaminhou abertura à instância existente     |
 
 Relatórios dos probes em `.artifacts/native-keychain-probe/{report,rust-report}.json`; inspeções de release em `.artifacts/release-inspection-*.json`. Esses arquivos locais contêm somente resultados de diagnóstico e não são versionados. Nenhuma conta real foi usada para gerar fixtures/testes.
 
