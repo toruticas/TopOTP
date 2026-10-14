@@ -68,7 +68,7 @@ impl Session {
                 || now.saturating_sub(self.interaction) >= Duration::from_secs(120)
                 || self
                     .hidden
-                    .is_some_and(|hidden| now.saturating_sub(hidden) >= Duration::from_secs(15)))
+                    .is_some_and(|hidden| now.saturating_sub(hidden) >= Duration::from_secs(30)))
     }
     pub fn interact(&mut self, epoch: u64, now: Duration) -> AppResult<()> {
         self.check(epoch, now)?;
@@ -76,7 +76,11 @@ impl Session {
         Ok(())
     }
     pub fn visibility(&mut self, visible: bool, now: Duration) {
-        self.hidden = if visible { None } else { Some(now) };
+        if visible {
+            self.hidden = None;
+        } else if self.hidden.is_none() {
+            self.hidden = Some(now);
+        }
     }
 }
 
@@ -113,12 +117,14 @@ mod tests {
         let e = v.begin().unwrap();
         v.approve(e, s(0)).unwrap();
         v.visibility(false, s(3));
-        assert!(v.check(e, s(18)).is_err());
-        v.visibility(true, s(17));
-        v.check(e, s(18)).unwrap();
+        v.visibility(false, s(20));
+        v.check(e, s(32)).unwrap();
+        assert!(v.check(e, s(33)).is_err());
+        v.visibility(true, s(32));
+        v.check(e, s(33)).unwrap();
         v.lock();
         let e2 = v.begin().unwrap();
-        v.approve(e2, s(20)).unwrap();
-        assert!(v.check(e, s(20)).is_err());
+        v.approve(e2, s(34)).unwrap();
+        assert!(v.check(e, s(34)).is_err());
     }
 }

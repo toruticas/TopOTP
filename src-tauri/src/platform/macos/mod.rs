@@ -4,6 +4,7 @@ pub mod auth;
 pub mod clipboard;
 pub mod events;
 pub mod keychain;
+pub mod panel;
 
 #[cfg(feature = "native-probe")]
 pub mod probe;

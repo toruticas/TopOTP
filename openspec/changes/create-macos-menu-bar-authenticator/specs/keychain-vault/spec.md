@@ -38,10 +38,10 @@ O desbloqueio MUST exigir avaliação bem-sucedida de LocalAuthentication no cor
 
 ### Requirement: Bounded authorization session
 
-O app MUST iniciar bloqueado e revogar a sessão ao bloquear manualmente, bloquear a sessão do macOS, suspender o sistema ou encerrar. Sem interação explícita do usuário, a sessão MUST expirar após 120 segundos; sua duração máxima MUST ser 300 segundos, e ocultar o painel MUST encerrar a sessão após 15 segundos contínuos oculto. Atualizações automáticas de TOTP MUST NOT renovar esses limites. Retomar o sistema MUST exigir novo desbloqueio.
+O app MUST iniciar bloqueado e revogar a sessão ao bloquear manualmente, bloquear a sessão do macOS, suspender o sistema ou encerrar. Sem interação explícita do usuário, a sessão MUST expirar após 120 segundos; sua duração máxima MUST ser 300 segundos, e ocultar o painel MUST encerrar a sessão após 30 segundos contínuos oculto. Atualizações automáticas de TOTP MUST NOT renovar esses limites. Retomar o sistema MUST exigir novo desbloqueio.
 
 #### Scenario: Quick panel reopen
-- **WHEN** o usuário reabre o painel antes de 15 segundos oculto e os demais limites ainda estão válidos
+- **WHEN** o usuário reabre o painel antes de 30 segundos oculto e os demais limites ainda estão válidos
 - **THEN** a sessão existente pode continuar sem novo prompt
 
 #### Scenario: Background code refresh

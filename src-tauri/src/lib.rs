@@ -12,7 +12,7 @@ pub mod platform;
 use application::core::Core;
 use std::sync::Arc;
 use tauri::{
-    Emitter, Manager, PhysicalPosition,
+    Emitter, Manager,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
 };
@@ -36,30 +36,7 @@ fn show(app: &tauri::AppHandle) {
     }
 }
 fn position(window: &tauri::WebviewWindow, tray: &TrayIcon) {
-    if let Ok(Some(rect)) = tray.rect() {
-        let scale = window.scale_factor().unwrap_or(1.0);
-        let p = rect.position.to_physical::<f64>(scale);
-        let s = rect.size.to_physical::<f64>(scale);
-        if let Ok(Some(monitor)) = window.monitor_from_point(p.x, p.y) {
-            let scale = monitor.scale_factor();
-            let size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
-                (380.0 * scale) as u32,
-                (480.0 * scale) as u32,
-            ));
-            let area = monitor.work_area();
-            let left = area.position.x as f64;
-            let top = area.position.y as f64;
-            let x = (p.x + s.width / 2.0 - size.width as f64 / 2.0).clamp(
-                left,
-                (left + area.size.width as f64 - size.width as f64).max(left),
-            );
-            let y = (p.y + s.height + 4.0 * scale).clamp(
-                top,
-                (top + area.size.height as f64 - size.height as f64).max(top),
-            );
-            let _ = window.set_position(PhysicalPosition::new(x as i32, y as i32));
-        }
-    }
+    let _ = platform::macos::panel::position(window, tray);
 }
 pub fn run() {
     let builder = tauri::Builder::default()

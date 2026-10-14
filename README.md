@@ -10,6 +10,7 @@ Desbloqueio por **Touch ID ou senha do macOS, sem conta Apple**. Touch ID foi co
 - Cadastro manual/URI com revisão, edição, exclusão confirmada, busca, fixação, ordem e cópia nativa.
 - Importação/exportação pela interface: JSON claro e Authenticator v3 criptografado, múltiplas senhas, prévia/seleção e duplicatas preservadas.
 - Sessões limitadas, revogação de operações antigas, commits com recuperação e IPC restrito ao painel local.
+- Painel ancorado abaixo do ícone, com retomada da tela/busca/rolagem/formulários não secretos ao reabrir em menos de 30 segundos.
 
 Importação/exportação verificadas contra as funções originais de [Authenticator-Extension/Authenticator](https://github.com/Authenticator-Extension/Authenticator) no commit fixado: JSON claro/v3, códigos TOTP, parâmetros e próximo contador HOTP. Testes E2E exercitam ambos os formatos pelo app, com adaptadores nativos sintéticos. A extensão completa no navegador ainda não foi testada. Veja [detalhes e diferenças de formato](docs/upstream-compatibility.md).
 

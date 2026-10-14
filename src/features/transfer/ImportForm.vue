@@ -33,9 +33,11 @@ function sendPasswords() {
   for (const key in passwords) passwords[key] = '';
   emit('passwords', values);
 }
-onBeforeUnmount(() => {
+function clearSensitive() {
   for (const key in passwords) passwords[key] = '';
-});
+}
+defineExpose({ clearSensitive });
+onBeforeUnmount(clearSensitive);
 </script>
 <template>
   <section class="form-stack">

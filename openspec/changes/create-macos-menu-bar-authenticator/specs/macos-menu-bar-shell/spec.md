@@ -18,7 +18,11 @@ O aplicativo MUST iniciar bloqueado, com um único ícone na barra de menus e se
 
 ### Requirement: Panel positioning and interaction
 
-O app MUST abrir ou ocultar seu painel por clique no ícone, posicionando-o junto ao ícone dentro da área visível do monitor correspondente. Escape ou clique fora MUST ocultar o painel, respeitando o fluxo de uma autenticação nativa em andamento.
+O app MUST abrir ou ocultar seu painel por clique no ícone, posicionando-o imediatamente abaixo do ícone antes de exibir a janela, dentro da área visível do monitor correspondente. Escape ou clique fora MUST ocultar o painel, respeitando o fluxo de uma autenticação nativa em andamento. Coordenadas MUST permanecer consistentes em monitores Retina e de escalas distintas.
+
+#### Scenario: Icon on a Retina display
+- **WHEN** o usuário clica no ícone em uma tela Retina
+- **THEN** o painel aparece abaixo do ícone, sem um frame inicial centralizado nem falha de busca do monitor por mistura de pontos e pixels
 
 #### Scenario: Icon on a secondary display
 - **WHEN** o ícone é acionado em um monitor secundário com escala diferente
@@ -27,6 +31,18 @@ O app MUST abrir ou ocultar seu painel por clique no ícone, posicionando-o junt
 #### Scenario: Authentication dialog changes focus
 - **WHEN** o macOS exibe o diálogo de autenticação após uma ação explícita
 - **THEN** a perda de foco causada por esse diálogo não encerra prematuramente o fluxo, e seu cancelamento mantém o cofre bloqueado
+
+### Requirement: Short-lived panel state
+
+Ocultar o painel MUST conservar somente em memória tela ativa, busca, posição de rolagem/foco, seleção de contas e campos não secretos por menos de 30 segundos, enquanto a sessão nativa permanecer válida. Senhas, seeds/URIs digitados e códigos MUST ser limpos ao ocultar. Reabrir MUST consultar a sessão nativa antes de revelar o conteúdo e atualizar os códigos sem consumir HOTP. Completar 30 segundos oculto, bloquear ou expirar a sessão MUST descartar a retomada. Ocultações repetidas MUST NOT estender o prazo e nenhum estado de retomada MUST ser persistido em disco/storage web.
+
+#### Scenario: Quick return to an unfinished screen
+- **WHEN** o usuário clica fora e reabre pelo ícone antes de 30 segundos, na mesma sessão autorizada
+- **THEN** retorna à tela, busca, rolagem, foco e seleções anteriores, com campos de senha/seed vazios e códigos atuais
+
+#### Scenario: Hidden state expires or session is locked
+- **WHEN** o painel completa 30 segundos oculto ou o cofre é bloqueado antes de reabrir
+- **THEN** a retomada é descartada e nenhuma conta, código ou formulário antigo é revelado ao reabrir
 
 ### Requirement: Single application instance
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
+import { computed, nextTick, onMounted, onBeforeUnmount, ref } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   api,
@@ -26,7 +26,19 @@ const error = ref('');
 const notice = ref('');
 const progress = ref('');
 const visible = ref(true);
+const restoring = ref(false);
+const panelElement = ref<HTMLElement>();
+const accountForm = ref<InstanceType<typeof AccountForm>>();
+const importForm = ref<InstanceType<typeof ImportForm>>();
+const exportForm = ref<InstanceType<typeof ExportForm>>();
 const now = ref(Date.now() / 1000);
+const resumeWindowMs = 30_000;
+let hiddenAt: number | null = null;
+let hiddenEpoch: string | null = null;
+let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+let savedScroll = { top: 0, left: 0 };
+let savedFocus: HTMLElement | null = null;
+let visibilityGeneration = 0;
 let generation = 0;
 let polling = false;
 let interval: ReturnType<typeof setInterval> | undefined;
@@ -42,6 +54,12 @@ const filtered = computed(() =>
     .sort((a, b) => Number(b.pinned) - Number(a.pinned)),
 );
 function clear() {
+  if (resumeTimer) clearTimeout(resumeTimer);
+  resumeTimer = undefined;
+  hiddenAt = null;
+  hiddenEpoch = null;
+  savedScroll = { top: 0, left: 0 };
+  savedFocus = null;
   generation++;
   accounts.value = [];
   codes.value = [];
@@ -54,12 +72,85 @@ function clear() {
   notice.value = '';
   progress.value = '';
 }
+function canResume() {
+  return (
+    hiddenAt !== null &&
+    performance.now() - hiddenAt < resumeWindowMs &&
+    hiddenEpoch === status.value.epoch &&
+    status.value.phase === 'unlocked'
+  );
+}
+function hidePresentation() {
+  visibilityGeneration++;
+  if (!visible.value) return;
+  const scroll = document.scrollingElement ?? document.documentElement;
+  savedScroll = { top: scroll.scrollTop, left: scroll.scrollLeft };
+  savedFocus =
+    document.activeElement instanceof HTMLElement &&
+    panelElement.value?.contains(document.activeElement)
+      ? document.activeElement
+      : null;
+  accountForm.value?.clearSensitive();
+  importForm.value?.clearSensitive();
+  exportForm.value?.clearSensitive();
+  visible.value = false;
+  codes.value = [];
+  if (status.value.phase !== 'unlocked') {
+    clear();
+    return;
+  }
+  hiddenAt = performance.now();
+  hiddenEpoch = status.value.epoch;
+  resumeTimer = setTimeout(() => {
+    clear();
+    status.value.phase = 'locked';
+  }, resumeWindowMs);
+}
+async function showPresentation() {
+  const request = ++visibilityGeneration;
+  const resume = canResume();
+  const scroll = resume ? savedScroll : { top: 0, left: 0 };
+  const focus = resume ? savedFocus : null;
+  const epoch = hiddenEpoch;
+  if (resumeTimer) clearTimeout(resumeTimer);
+  resumeTimer = undefined;
+  restoring.value = true;
+  visible.value = true;
+  if (!resume) clear();
+  try {
+    await sync();
+    if (request !== visibilityGeneration || disposed) return;
+    const restored =
+      resume &&
+      status.value.phase === 'unlocked' &&
+      status.value.epoch === epoch;
+    hiddenAt = null;
+    hiddenEpoch = null;
+    savedFocus = null;
+    restoring.value = false;
+    await nextTick();
+    if (request !== visibilityGeneration || disposed) return;
+    const element = document.scrollingElement ?? document.documentElement;
+    element.scrollTop = restored ? scroll.top : 0;
+    element.scrollLeft = restored ? scroll.left : 0;
+    if (restored && focus?.isConnected) focus.focus({ preventScroll: true });
+  } catch {
+    if (request !== visibilityGeneration || disposed) return;
+    clear();
+    status.value.phase = 'locked';
+    restoring.value = false;
+  }
+}
 async function refresh(ticket = generation) {
   const epoch = status.value.epoch;
   const [list, values] = await Promise.all([api.list(epoch), api.codes(epoch)]);
-  if (ticket === generation && visible.value && epoch === status.value.epoch) {
+  if (
+    ticket === generation &&
+    (visible.value || canResume()) &&
+    epoch === status.value.epoch
+  ) {
     accounts.value = list;
-    codes.value = values;
+    if (visible.value) codes.value = values;
   }
 }
 async function sync() {
@@ -73,7 +164,7 @@ async function sync() {
 async function action(work: (current: () => boolean) => Promise<void>) {
   if (busy.value) return;
   const ticket = generation;
-  const current = () => ticket === generation && visible.value;
+  const current = () => ticket === generation && (visible.value || canResume());
   busy.value = true;
   error.value = '';
   notice.value = '';
@@ -290,10 +381,7 @@ async function tick() {
   try {
     const s = await api.status();
     if (ticket !== generation) return;
-    if (
-      s.epoch !== status.value.epoch ||
-      (s.phase === 'locked' && status.value.phase !== 'locked')
-    ) {
+    if (s.epoch !== status.value.epoch || s.phase !== status.value.phase) {
       clear();
       status.value = s;
       if (s.phase === 'unlocked') await refresh();
@@ -336,24 +424,8 @@ onMounted(async () => {
         });
       },
     ],
-    [
-      'panel-hidden',
-      () => {
-        visible.value = false;
-        clear();
-      },
-    ],
-    [
-      'panel-shown',
-      () => {
-        visible.value = true;
-        clear();
-        void sync().catch(() => {
-          clear();
-          status.value.phase = 'locked';
-        });
-      },
-    ],
+    ['panel-hidden', hidePresentation],
+    ['panel-shown', () => void showPresentation()],
   ] as const) {
     const off = await listen(name, callback);
     if (disposed) off();
@@ -375,6 +447,8 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <main
+    v-show="visible && !restoring"
+    ref="panelElement"
     class="panel"
     @pointerdown="interact"
     @keydown="interact"
@@ -515,6 +589,7 @@ onBeforeUnmount(() => {
     </template>
     <AccountForm
       v-else-if="view === 'account'"
+      ref="accountForm"
       :account="editing"
       :busy="busy"
       @save="save"
@@ -527,6 +602,7 @@ onBeforeUnmount(() => {
     />
     <ImportForm
       v-else-if="view === 'import' && preview"
+      ref="importForm"
       :key="JSON.stringify(preview.rows.map((r) => [r.sourceId, r.issue]))"
       :preview="preview"
       :progress="progress"
@@ -537,6 +613,7 @@ onBeforeUnmount(() => {
     />
     <ExportForm
       v-else-if="view === 'export'"
+      ref="exportForm"
       :accounts="accounts"
       :busy="busy"
       @export="exportBackup"

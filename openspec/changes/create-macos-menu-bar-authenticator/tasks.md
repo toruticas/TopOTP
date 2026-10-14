@@ -37,11 +37,12 @@
 - [ ] 5.3 Posicionar o painel a partir do tray/monitor/DPI, limitar às bordas e validar abertura em monitor secundário.
 - [x] 5.4 Implementar toggle, Escape, perda de foco e fechar para ocultar, preservando o fluxo durante diálogos nativos de autenticação/arquivo.
 - [x] 5.5 Ligar Bloquear/Sair nativos à revogação de autorização e limpeza de transientes, funcionando mesmo com frontend indisponível.
+- [x] 5.6 Corrigir o posicionamento Retina com coordenadas AppKit e movimento síncrono antes de exibir; testar alinhamento abaixo do ícone, bordas e origens de monitores secundários.
 
 ## 6. Sessão e casos de uso autorizados
 
 - [x] 6.1 Implementar estados bloqueado/autenticando/desbloqueado e autorização privada de sessão após LocalAuthentication no Rust, sem ler credenciais antes da autenticação e preservando bloqueio em todas as falhas.
-- [x] 6.2 Implementar geração de sessão, timers de 120 s sem interação/300 s máximos/15 s oculto, eventos do sistema e limpeza de UI/transientes; polling de códigos não renova autorização.
+- [x] 6.2 Implementar geração de sessão, timers de 120 s sem interação/300 s máximos/30 s oculto, eventos do sistema e limpeza de UI/transientes; polling de códigos não renova autorização.
 - [x] 6.3 Ordenar commits e bloqueio no coordenador nativo; testar bloqueio durante autenticação, cálculo, diálogo e importação, incluindo respostas antigas e sucessos tardios.
 - [x] 6.4 Implementar gestão/listagem autorizadas, atualização TOTP e consumo HOTP serializado com incremento persistido antes de emitir; testar falha de gravação, concorrência, reinício e contador que não pode retroceder.
 - [x] 6.5 Implementar cópia nativa de TOTP atual/HOTP emitido, limpeza em 30 s/bloqueio/sair por identidade da escrita e preservação de nova escrita de outro app, mesmo com texto igual.
@@ -57,8 +58,9 @@
 - [x] 8.1 Criar painel em português com estados bloqueado/autenticando/vazio/lista/erro e desbloqueio por UI nativa, sem campo de senha mestre própria.
 - [x] 8.2 Implementar lista, busca, fixação/ordem, código/tempo restante, Copiar e Gerar próximo, sem consumir HOTP por renderização nem exibir nomes/códigos bloqueados.
 - [x] 8.3 Implementar cadastro manual/URI, edição com substituição opcional de seed e exclusão confirmada; limpar campos sensíveis e só refletir sucesso depois do commit.
-- [x] 8.4 Implementar limpeza ao ocultar/bloquear e descarte de respostas antigas, incluindo reabertura rápida do painel e atualização após mudança do relógio.
+- [x] 8.4 Mascarar o painel e limpar códigos/segredos digitados ao ocultar; limpar toda a apresentação ao bloquear e descartar respostas de gerações expiradas, incluindo reabertura rápida e atualização após mudança do relógio.
 - [x] 8.5 Verificar navegação por teclado, nomes acessíveis, foco, indicação não exclusiva por cor e renderização de labels hostis como texto.
+- [x] 8.6 Retomar tela, busca, rolagem, foco, formulários não secretos e seleção em menos de 30 segundos; testar limite exato, ocultações repetidas, limpeza de senhas/seeds e revogação nativa antes de revelar.
 
 ## 9. Importação de backup pela interface
 
@@ -94,9 +96,10 @@
 ## Evidências e pendências da entrega
 
 - Touch ID confirmado pelo usuário no `.app` ad hoc; abertura pelo ícone do build final também confirmada.
-- 31 testes Rust, 5 testes frontend e fluxo E2E no WKWebView aprovados. Typecheck, lint, Prettier, rustfmt, Clippy e validação OpenSpec aprovados.
+- 37 testes Rust (incluindo interoperabilidade com funções originais), 12 testes frontend e 3 testes E2E no WKWebView aprovados. Typecheck, lint, Prettier, rustfmt, Clippy e validação OpenSpec aprovados.
 - Probes reais Swift/Rust comprovaram Keychain tradicional; outro executável recebeu negativa de acesso. Não foi exigida conta/perfil Apple.
 - `.app`/`.dmg` arm64/x86_64 gerados com assinatura ad hoc e inspecionados. Aplicativo arm64 iniciado localmente, sem listener TCP. Intel foi somente compilado.
 - Tarefas 2.3/2.4/2.5/5.3/10.4/11.3 permanecem abertas pelas partes que exigem senha/cancelamento, nova autenticação de exportação, sistema bloqueado/suspenso, segundo monitor, VoiceOver, clipboard e HOTP com Keychain real após restart. Código dessas rotas existe; mocks não comprovam esses testes.
-- Tarefa 10.5 permanece aberta para a extensão completa no navegador. Interoperabilidade dos codecs claro/v3 já foi comprovada nos dois sentidos por fixtures e CryptoJS/Argon2; não equivale à execução da extensão.
-- CI está configurado e ainda não foi executado no GitHub. Gatekeeper/quarentena e confiança de ACL após atualizar o binário permanecem documentados como verificações futuras.
+- Tarefa 10.5 concluída contra funções originais do commit fixado, preservadas com MIT/checksums. Ida e volta clara/v3, parâmetros, códigos TOTP/HOTP e contador foram comprovados; a extensão completa no navegador não foi executada.
+- A CI passou no commit `70cbaef`, após corrigir a inspeção que dependia do RTK no runner. Gatekeeper/quarentena e confiança de ACL após atualizar o binário permanecem documentados como verificações futuras.
+- Posicionamento usa pontos AppKit e retomada permanece apenas em memória por menos de 30 s. Os testes cobrem geometria Retina/bordas/origens negativas, busca, formulário, rolagem/foco, seleções, limpeza de senhas/seeds, limite exato e bloqueio. A captura do painel pelo computador continua retornando `cgWindowNotFound`/timeout; confirmação visual do novo posicionamento e segundo monitor permanecem distintas desses testes.

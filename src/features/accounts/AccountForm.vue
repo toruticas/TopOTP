@@ -38,10 +38,12 @@ function submit() {
     emit('save', value);
   }
 }
-onBeforeUnmount(() => {
+function clearSensitive() {
   form.secret = '';
   uri.value = '';
-});
+}
+defineExpose({ clearSensitive });
+onBeforeUnmount(clearSensitive);
 </script>
 <template>
   <form ref="formElement" class="form-stack" @submit.prevent="submit">

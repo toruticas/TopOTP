@@ -2,6 +2,8 @@
 
 Abra TopOTP e clique no ícone na barra de menus. **Desbloquear** abre a autenticação do macOS por Touch ID ou senha. O aplicativo inicia bloqueado; não há senha mestre própria nem conta Apple exigida.
 
+O painel abre imediatamente abaixo do ícone. Clicar fora ou pressionar Escape o oculta. Reabrir em menos de 30 segundos retoma a tela, busca, rolagem, foco, seleções e campos não secretos, enquanto a sessão estiver válida. Senhas, chaves/URIs digitadas e códigos são limpos ao ocultar; códigos atuais retornam após revalidar a sessão. O estado é temporário em memória e descartado ao completar 30 segundos oculto, bloquear ou expirar a sessão.
+
 Adicione conta manualmente (Base32, TOTP/HOTP e parâmetros) ou escolha URI `otpauth://`, revise a prévia e confirme. Edite por “•••”; deixar “Nova chave” vazia preserva a chave. Exclusão exige confirmação. Busca, estrelas e setas ajudam a organizar as contas. Rótulos são apresentados como texto.
 
 **Copiar** calcula o TOTP atual. HOTP só avança em **Gerar próximo**; copiar novamente não consome outro contador. O incremento é persistido antes de mostrar o código. Uma interrupção entre persistência e exibição pode pular um código; o contador nunca é revertido. Também não pode ser reduzido trocando o tipo da conta.
@@ -18,7 +20,7 @@ Steam/Battle.net/hex/GOST, backups criptografados antigos, QR/câmera e Google m
 
 ## Bloqueio, armazenamento e atualização
 
-Bloquear/Sair removem a autorização e transientes. A sessão expira em 120 s sem interação, 300 s totais ou 15 s oculto. A cópia é limpa após 30 s ou bloqueio se a escrita ainda pertencer ao TopOTP; não apaga uma nova escrita de outro app.
+Bloquear/Sair removem a autorização e transientes. A sessão expira em 120 s sem interação, 300 s totais ou 30 s oculto. A cópia é limpa após 30 s ou bloqueio se a escrita ainda pertencer ao TopOTP; não apaga uma nova escrita de outro app.
 
 Chaves, nomes e contadores ficam em valores do Keychain tradicional; o diretório de dados contém apenas referências opacas/ordem/fixação e journal de recuperação. Touch ID controla a sessão do app; a ACL do item não impõe biometria independentemente dele. Strings transitórias do JavaScript/frameworks não têm garantia de zeroização física, embora formulários sejam limpos e nada seja persistido no browser.
 

@@ -30,7 +30,9 @@ Relatórios dos probes em `.artifacts/native-keychain-probe/{report,rust-report}
 
 ## Sessão e sinais
 
-Limites: 120 s sem interação explícita, 300 s totais, 15 s oculto. Polling não renova a sessão. Revogação é anunciada atomicamente antes de aguardar o mutex de commit; resultados antigos não são divulgados. Testes com relógio/adaptadores simulados comprovam os limites, sucesso tardio, bloqueio durante cálculo/importação e concorrência HOTP. Não constituem teste de suspensão física.
+Limites: 120 s sem interação explícita, 300 s totais, 30 s oculto. Polling não renova a sessão. Revogação é anunciada atomicamente antes de aguardar o mutex de commit; resultados antigos não são divulgados. Testes com relógio/adaptadores simulados comprovam os limites, sucesso tardio, bloqueio durante cálculo/importação e concorrência HOTP. Não constituem teste de suspensão física.
+
+O posicionamento passou a usar pontos AppKit da janela/tela do `NSStatusItem`, movendo o painel sincronamente antes de mostrar. A busca anterior recebia pixels Retina e podia não encontrar monitor, deixando a janela centralizada. Testes de geometria cobrem alinhamento abaixo do ícone, limites das bordas e origens negativas; execução real em monitor secundário segue pendente. Testes Vue/Rust comprovam retomada em 29,999 s, descarte em 30 s, preservação de rolagem/foco/formulários/seleções, limpeza de senhas/seeds e revogação antes de revelar a tela.
 
 Observadores públicos registrados: `NSWorkspaceWillSleepNotification`, `NSWorkspaceDidWakeNotification`, `NSWorkspaceScreensDidSleepNotification`, `NSWorkspaceSessionDidResignActiveNotification`. O sinal distribuído `com.apple.screenIsLocked` é uma defesa adicional **não documentada como contrato público da Apple**; não é a única proteção. Sair/Bloquear/timers independem do renderer.
 

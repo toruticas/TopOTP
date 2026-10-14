@@ -24,10 +24,12 @@ function submit() {
   confirmation.value = '';
   emit('export', selected.value, encrypted.value, p, c, acknowledge.value);
 }
-onBeforeUnmount(() => {
+function clearSensitive() {
   password.value = '';
   confirmation.value = '';
-});
+}
+defineExpose({ clearSensitive });
+onBeforeUnmount(clearSensitive);
 </script>
 <template>
   <form class="form-stack" @submit.prevent="submit">

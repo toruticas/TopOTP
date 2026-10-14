@@ -144,9 +144,47 @@ fn reopening_after_hidden_deadline_cannot_restore_authorization() {
     let f = Fixture::new();
     let e = f.unlock();
     f.core.visibility(false);
-    f.clock.0.store(15, Ordering::SeqCst);
+    f.clock.0.store(30, Ordering::SeqCst);
     f.core.visibility(true);
     assert!(f.core.list(&e).is_err());
+}
+#[test]
+fn quick_reopen_keeps_preview_but_exactly_thirty_seconds_revokes_it() {
+    let f = Fixture::new();
+    let e = f.unlock();
+    let preview = f
+        .core
+        .prepare_uri(&e, "otpauth://totp/Synthetic?secret=JBSWY3DPEHPK3PXP")
+        .unwrap();
+    f.core.visibility(false);
+    f.clock.0.store(29, Ordering::SeqCst);
+    f.core.visibility(true);
+    assert_eq!(f.core.status().unwrap().epoch, e);
+    f.core
+        .commit_import(
+            &e,
+            Uuid::parse_str(&preview.id).unwrap(),
+            vec![Uuid::parse_str(&preview.rows[0].account.as_ref().unwrap().id).unwrap()],
+            false,
+        )
+        .unwrap();
+    let preview = f
+        .core
+        .prepare_uri(&e, "otpauth://totp/Other?secret=JBSWY3DPEHPK3PXQ")
+        .unwrap();
+    f.core.visibility(false);
+    f.clock.0.store(59, Ordering::SeqCst);
+    f.core.visibility(true);
+    assert!(f.core.list(&e).is_err());
+    assert!(matches!(
+        f.core.commit_import(
+            &e,
+            Uuid::parse_str(&preview.id).unwrap(),
+            vec![Uuid::parse_str(&preview.rows[0].account.as_ref().unwrap().id).unwrap()],
+            false
+        ),
+        Err(AppError::Locked)
+    ));
 }
 #[test]
 fn import_keeps_hotp_after_label_edit_and_does_not_regress_counter() {
