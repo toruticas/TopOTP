@@ -1,0 +1,34 @@
+schema: spec-driven
+context: |
+  TopOTP has an implemented MIT-licensed macOS menu-bar authenticator with Tauri/Vue, a native vault and in-app transfers.
+  Touch ID was confirmed by the user; other hardware/manual verifications remain open. Track evidence in docs/native-verification.md and the active change tasks.
+  Target architecture: Tauri 2, Rust, Vue 3 Composition API, strict TypeScript and Vite.
+  Use Authenticator-Extension/Authenticator as a UX and data-interoperability reference, not a browser runtime dependency.
+  Upstream snapshot and format research are documented in docs/upstream-compatibility.md.
+  All persistent OTP seeds reside in the traditional macOS Keychain with application ACLs. No Apple account/provisioning is required.
+  LocalAuthentication authorizes private Rust sessions before credential reads; item-level biometric protection is not claimed.
+  OTP generation and session authorization belong in Rust; no seeds in web storage or ordinary IPC responses.
+  Operate offline with bundled assets. Cloud sync, browser extension APIs and other OSes are outside this initial change.
+  Repository instructions are in AGENTS.md. Shell commands must use rtk (rtk proxy for unsupported commands).
+  Write project documents in Brazilian Portuguese, retaining schema headings and English code identifiers.
+rules:
+  proposal:
+    - Distinguish initial interoperability support from full upstream feature parity.
+    - State exclusions and describe implementation/verification only to the extent supported by current evidence.
+  design:
+    - Specify Keychain access control, native authentication fallback, lock triggers and async race handling.
+    - Define persistence failure behavior and atomic HOTP counter updates before releasing codes.
+    - Document upstream provenance, dependency choices, IPC boundaries and macOS native verification.
+  specs:
+    - Use normative MUST or SHALL statements and explicit WHEN/THEN scenarios.
+    - Cover denied authentication, unavailable storage and invalid or unsupported imports.
+  tasks:
+    - Use unchecked numbered checkboxes and order work by dependencies.
+    - Include repository setup, agent documentation and meaningful security/native acceptance checks.
+    - Do not treat signed release or biometric verification as complete without actual evidence.
+operations:
+  apply:
+    guidance:
+      - Read AGENTS.md and the complete active change before editing application code.
+      - Use only synthetic secrets and isolated test Keychain namespaces.
+      - Validate the native Keychain authentication approach before connecting real vault operations to the UI.

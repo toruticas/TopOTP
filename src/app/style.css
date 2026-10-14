@@ -1,0 +1,274 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #eef3fc;
+  background: #141821;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  border: 1px solid #364254;
+  border-radius: 9px;
+  background: #222b39;
+  color: #eef3fc;
+  padding: 8px 11px;
+  cursor: pointer;
+  font-size: 13px;
+}
+button:hover:not(:disabled) {
+  background: #303e52;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+input,
+select,
+textarea {
+  display: block;
+  width: 100%;
+  border: 1px solid #364254;
+  border-radius: 8px;
+  background: #1c2330;
+  color: #eef3fc;
+  padding: 9px;
+  min-width: 0;
+}
+textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+input[type='checkbox'] {
+  width: auto;
+  flex-shrink: 0;
+}
+:focus-visible {
+  outline: 2px solid #a7c7ff;
+  outline-offset: 3px;
+}
+.panel {
+  padding: 18px;
+  min-height: 480px;
+}
+header,
+.brand,
+.section-title,
+.account-top,
+.code-row,
+.account-actions,
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #2d3646;
+  margin-bottom: 18px;
+}
+.brand {
+  justify-content: flex-start;
+  gap: 9px;
+}
+h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+}
+h2 {
+  font-size: 20px;
+  margin: 10px 0;
+  letter-spacing: -0.4px;
+}
+p {
+  color: #b6c2d5;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.hint,
+small {
+  font-size: 12px;
+  color: #a1aec3;
+}
+.primary {
+  background: #c2d5ff;
+  color: #18283f;
+  border-color: #c2d5ff;
+  font-weight: 650;
+}
+.primary:hover:not(:disabled) {
+  background: #d6e3ff;
+}
+.locked {
+  text-align: center;
+  padding: 28px 8px 16px;
+}
+.vault-mark {
+  font-size: 75px;
+  line-height: 1.1;
+  color: #bad0ff;
+  margin-bottom: 20px;
+}
+.locked .primary {
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px;
+}
+.privacy {
+  font-size: 11px;
+  color: #8492a8;
+  margin-top: 28px;
+}
+.empty {
+  text-align: center;
+  padding: 20px 5px 26px;
+}
+.search {
+  display: block;
+  margin-bottom: 14px;
+}
+.account-card {
+  background: #1c2330;
+  border: 1px solid #2d384b;
+  border-radius: 12px;
+  padding: 13px;
+  margin-bottom: 10px;
+}
+.account-label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.account-label strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.account-label span {
+  font-size: 12px;
+  color: #a1aec3;
+  overflow-wrap: anywhere;
+}
+.icon-button {
+  border: 0;
+  background: transparent;
+  padding: 5px;
+  min-width: 26px;
+}
+.code-row {
+  margin: 13px 0;
+}
+.code {
+  font-variant-numeric: tabular-nums;
+  font-size: 29px;
+  letter-spacing: 1px;
+  color: #c9dcff;
+  font-weight: 600;
+}
+.countdown {
+  font-size: 12px;
+  color: #b8c9e7;
+  white-space: nowrap;
+}
+.order-actions {
+  margin-left: auto;
+  display: flex;
+}
+.account-actions button {
+  font-size: 12px;
+}
+footer {
+  position: sticky;
+  bottom: 0;
+  background: #141821;
+  padding: 14px 0 0;
+  border-top: 1px solid #2d3646;
+  margin-top: 15px;
+  justify-content: flex-start;
+}
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.form-stack h2 {
+  font-size: 18px;
+}
+.form-stack label {
+  font-size: 12px;
+  color: #b8c5da;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-row {
+  display: flex;
+  gap: 10px;
+}
+.form-row label {
+  flex: 1;
+  min-width: 0;
+}
+.selection {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 10px !important;
+  padding: 8px 0;
+}
+.selection span {
+  overflow-wrap: anywhere;
+}
+.selection small {
+  display: block;
+  margin-top: 4px;
+}
+.warning,
+.message {
+  padding: 10px;
+  border-radius: 9px;
+  background: #29364a;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.warning {
+  background: #3c3020;
+  color: #f4dbac;
+}
+.danger {
+  color: #ffb6ba;
+}
+.error {
+  background: #412b35;
+  color: #ffd3dc;
+}
+.compact {
+  font-size: 11px;
+  padding: 6px 8px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

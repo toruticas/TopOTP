@@ -1,0 +1,102 @@
+## 1. Fundação reproduzível do projeto
+
+- [x] 1.1 Verificar os pré-requisitos macOS/Xcode CLT, selecionar versões compatíveis de Node 24 LTS/npm e Rust stable e registrar versões exatas em `.nvmrc`, `engines` e `rust-toolchain.toml`.
+- [x] 1.2 Criar o projeto Tauri 2 + Vue 3/TypeScript/Vite preservando README, licença e OpenSpec; configurar lockfiles npm/Cargo e target do frontend compatível com macOS 13.
+- [x] 1.3 Criar as camadas `domain`, `application`, `platform/macos`, `compatibility`, `commands` e funcionalidades frontend conforme o design, com interfaces de relógio, armazenamento, autenticação, clipboard e arquivos.
+- [x] 1.4 Configurar TypeScript estrito, `vue-tsc`, ESLint/Prettier, Vitest/Vue Test Utils, rustfmt/Clippy e os scripts de desenvolvimento/build/validação especificados no design.
+- [x] 1.5 Definir identidade estável do app e namespaces separados dev/test/release para Keychain; adicionar `.gitignore` para builds, arquivos pessoais e material de assinatura.
+- [x] 1.6 Completar `docs/development.md` e atualizar README/AGENTS.md com caminhos e comandos realmente existentes, registrando que builds locais e releases assinados têm verificações distintas.
+
+## 2. Comprovação da proteção nativa antes de integrar o cofre
+
+- [x] 2.1 Integrar bindings macOS de Security/LocalAuthentication e criar um `.app` mínimo com item sintético no Keychain tradicional, ACL restrita ao aplicativo e assinatura ad hoc, sem conta Apple.
+- [x] 2.2 Comprovar escrita/leitura e isolamento do item sintético no Keychain tradicional; acesso negado ou indisponível deve falhar sem armazenar segredo fora do Keychain.
+- [ ] 2.3 Validar em macOS real desbloqueio por Touch ID e fallback à senha do macOS, incluindo cancelamento/recusa; registrar evidência e limitações sem usar contas reais.
+- [ ] 2.4 Verificar sessão nativa limitada após LocalAuthentication e seu descarte/invalidação; comprovar que exportação exige uma avaliação nativa nova, sem sucesso de autenticação fornecido pelo frontend.
+- [ ] 2.5 Provar observação de bloqueio do macOS, suspensão/retomada e inativação de sessão, documentando em `docs/native-verification.md` os sinais usados e os testes reais executados.
+
+## 3. Domínio OTP e parâmetros de contas
+
+- [x] 3.1 Implementar modelo de conta e validações Base32, tipo, algoritmo, dígitos, período e contador, com defaults e representação de contadores sem perda de precisão.
+- [x] 3.2 Implementar TOTP SHA-1/SHA-256/SHA-512 e validar vetores públicos RFC 6238, zeros à esquerda, período customizado e fronteiras/mudanças do relógio.
+- [x] 3.3 Implementar HOTP SHA-1 com vetores RFC 4226 e variantes SHA-256/SHA-512 com referência upstream; testar incremento fora do intervalo suportado.
+- [x] 3.4 Implementar interpretação/validação de URI `otpauth://` com prévia sem seed, defaults TOTP, contador obrigatório HOTP e rejeição de tipos/parâmetros não suportados.
+
+## 4. Persistência do cofre e recuperação
+
+- [x] 4.1 Implementar registros versionados por credencial no Keychain tradicional, com ACL do aplicativo, seed/metadata sensível em `kSecValueData`, sem sincronização e com atributos externos restritos a identificadores opacos.
+- [x] 4.2 Implementar manifesto de referências/ordem/fixação e preferências sem seeds, rótulos de conta ou contadores autoritativos; escrever o manifesto atomicamente.
+- [x] 4.3 Implementar criação/edição/exclusão com reconhecimento após commit, preservação de seed quando não substituído e tratamento de itens pendentes/referências ausentes.
+- [x] 4.4 Implementar staging e journal somente de IDs para commits de conjuntos; testar falha em etapas intermediárias e reinício mantendo o conjunto anterior ou o novo integralmente.
+- [x] 4.5 Aplicar wrappers/zeroização de buffers sensíveis e erros/logs sem payload; verificar com seeds sintéticos que arquivos comuns e logs do app não os persistem.
+
+## 5. Shell e ciclo de vida na barra de menus
+
+- [x] 5.1 Criar tray Rust, ícone template e menu Abrir/Bloquear/Sair, com startup bloqueado, painel oculto e `ActivationPolicy::Accessory` sem Dock.
+- [x] 5.2 Implementar instância única e encaminhar segunda abertura à instância existente, mantendo um único escritor do cofre.
+- [ ] 5.3 Posicionar o painel a partir do tray/monitor/DPI, limitar às bordas e validar abertura em monitor secundário.
+- [x] 5.4 Implementar toggle, Escape, perda de foco e fechar para ocultar, preservando o fluxo durante diálogos nativos de autenticação/arquivo.
+- [x] 5.5 Ligar Bloquear/Sair nativos à revogação de autorização e limpeza de transientes, funcionando mesmo com frontend indisponível.
+
+## 6. Sessão e casos de uso autorizados
+
+- [x] 6.1 Implementar estados bloqueado/autenticando/desbloqueado e autorização privada de sessão após LocalAuthentication no Rust, sem ler credenciais antes da autenticação e preservando bloqueio em todas as falhas.
+- [x] 6.2 Implementar geração de sessão, timers de 120 s sem interação/300 s máximos/15 s oculto, eventos do sistema e limpeza de UI/transientes; polling de códigos não renova autorização.
+- [x] 6.3 Ordenar commits e bloqueio no coordenador nativo; testar bloqueio durante autenticação, cálculo, diálogo e importação, incluindo respostas antigas e sucessos tardios.
+- [x] 6.4 Implementar gestão/listagem autorizadas, atualização TOTP e consumo HOTP serializado com incremento persistido antes de emitir; testar falha de gravação, concorrência, reinício e contador que não pode retroceder.
+- [x] 6.5 Implementar cópia nativa de TOTP atual/HOTP emitido, limpeza em 30 s/bloqueio/sair por identidade da escrita e preservação de nova escrita de outro app, mesmo com texto igual.
+
+## 7. Contratos IPC e permissões
+
+- [x] 7.1 Expor somente os comandos necessários e DTOs de apresentação tipados, com verificação Rust/TypeScript, erros estáveis e autorização em todas as operações sensíveis.
+- [x] 7.2 Restringir comandos do aplicativo via manifest/permissões e capability da janela/origem local; configurar CSP, navegação e DevTools sem permissões genéricas de shell, rede, filesystem ou clipboard.
+- [x] 7.3 Verificar rejeição de cliente/janela não autorizado e comandos enquanto bloqueado; inspecionar respostas/eventos para provar ausência de seeds, senhas e payloads de backup.
+
+## 8. Interface cotidiana de contas
+
+- [x] 8.1 Criar painel em português com estados bloqueado/autenticando/vazio/lista/erro e desbloqueio por UI nativa, sem campo de senha mestre própria.
+- [x] 8.2 Implementar lista, busca, fixação/ordem, código/tempo restante, Copiar e Gerar próximo, sem consumir HOTP por renderização nem exibir nomes/códigos bloqueados.
+- [x] 8.3 Implementar cadastro manual/URI, edição com substituição opcional de seed e exclusão confirmada; limpar campos sensíveis e só refletir sucesso depois do commit.
+- [x] 8.4 Implementar limpeza ao ocultar/bloquear e descarte de respostas antigas, incluindo reabertura rápida do painel e atualização após mudança do relógio.
+- [x] 8.5 Verificar navegação por teclado, nomes acessíveis, foco, indicação não exclusiva por cor e renderização de labels hostis como texto.
+
+## 9. Importação de backup pela interface
+
+- [x] 9.1 Criar fixtures sintéticas reproduzíveis do upstream fixado para JSON claro, v3 criptografado, múltiplos `keyId`, HOTP e defaults omitidos; registrar proveniência e licença de qualquer trecho reaproveitado.
+- [x] 9.2 Implementar codec JSON claro com preservação de parâmetros/metadados, classificação explícita de entradas inválidas/não suportadas e limites de arquivo/registros/campos.
+- [x] 9.3 Implementar Argon2/envelope CryptoJS v3 no Rust, limites PHC/ciphertext antes de derivação, múltiplas senhas, progresso/cancelamento e tempo máximo por tentativa; validar senha incorreta e chave ausente.
+- [x] 9.4 Criar fluxo Importar backup no painel com diálogo nativo, entrada transitória de senhas, prévia sem seeds e seleção/confirmar/cancelar, inteiramente utilizável pelo app.
+- [x] 9.5 Implementar duplicatas mantendo existente por padrão, recusa de redução HOTP, confirmação explícita de subconjunto e commit do conjunto aprovado pelo mecanismo de staging/manifesto.
+- [x] 9.6 Testar versões antigas/desconhecidas, arquivos excessivos, parâmetros criptográficos hostis, falhas de Keychain e bloqueio/cancelamento durante importação; nenhum dado descriptografado vai a disco ou para a UI.
+
+## 10. Exportação de backup pela interface
+
+- [x] 10.1 Implementar serialização compatível clara/v3 para contas selecionadas, defaults/campos preservados, salts/IDs aleatórios e contador HOTP não consumido pela exportação.
+- [x] 10.2 Criar fluxo Exportar backup com seleção de contas/formato, criptografia v3 padrão, senha/confirmar senha transitórias e reconhecimento explícito da alternativa em texto claro.
+- [x] 10.3 Exigir autenticação nativa nova e diálogo de destino; gravar pelo backend com permissões restritas, ciphertext temporário/commit atômico ou destino final novo para texto claro, retornando somente status.
+- [ ] 10.4 Testar recusa de autenticação, senha não confirmada, cancelamento, bloqueio antes do commit e falha de arquivo, com limpeza de saídas incompletas e sem temporários em texto claro.
+- [ ] 10.5 Demonstrar ida e volta com a extensão de referência para backups claros/v3, igualdade de códigos TOTP e próximo contador HOTP; documentar a limitação de integridade do envelope de compatibilidade.
+
+## 11. Verificação integrada e CI
+
+- [x] 11.1 Configurar CI macOS com instalação por lockfiles, checagens TypeScript/lint/formatação, testes frontend/Rust e build, sem exigir conta real, biometria automatizada ou credenciais de release.
+- [x] 11.2 Configurar WebdriverIO/Tauri embedded exclusivamente para build de testes e cobrir pelo app os fluxos de conta/importação/exportação/bloqueio com dados sintéticos; distinguir mocks de autenticação real.
+- [ ] 11.3 Executar testes reais do `.app` para Touch ID/senha/cancelamento, bloqueio/suspensão/retomada, dois monitores, instância única, clipboard, VoiceOver e continuidade HOTP após reinício; registrar resultados verificáveis.
+- [x] 11.4 Inspecionar o bundle de produção para confirmar ausência de servidor/plugins/mocks de automação, conteúdo remoto e permissões amplas; executar o fluxo local offline.
+
+## 12. Build local e documentação de entrega
+
+- [x] 12.1 Gerar builds locais `.app`/`.dmg` arm64 e x86_64 para macOS 13+, registrando quais targets foram apenas compilados e quais foram executados em hardware/sistema correspondente.
+- [x] 12.2 Configurar assinatura ad hoc local e documentar comportamento do Gatekeeper e confiança do Keychain após atualizações; nenhuma conta/perfil Apple será exigida. Deixar publicação pública fora da implementação e Developer ID/notarização como opção futura, sem alegar verificações não executadas.
+- [x] 12.3 Atualizar README, AGENTS.md e guias de desenvolvimento/uso/recuperação com os fluxos efetivos do app, compatibilidade verificada, preservação do Keychain no uninstall/rollback e comportamento de HOTP após interrupção.
+- [x] 12.4 Executar as checagens aplicáveis finais e validar a mudança OpenSpec; marcar somente tarefas entregues, registrando qualquer verificação nativa ou de target ainda pendente com sua causa.
+
+## Evidências e pendências da entrega
+
+- Touch ID confirmado pelo usuário no `.app` ad hoc; abertura pelo ícone do build final também confirmada.
+- 31 testes Rust, 5 testes frontend e fluxo E2E no WKWebView aprovados. Typecheck, lint, Prettier, rustfmt, Clippy e validação OpenSpec aprovados.
+- Probes reais Swift/Rust comprovaram Keychain tradicional; outro executável recebeu negativa de acesso. Não foi exigida conta/perfil Apple.
+- `.app`/`.dmg` arm64/x86_64 gerados com assinatura ad hoc e inspecionados. Aplicativo arm64 iniciado localmente, sem listener TCP. Intel foi somente compilado.
+- Tarefas 2.3/2.4/2.5/5.3/10.4/11.3 permanecem abertas pelas partes que exigem senha/cancelamento, nova autenticação de exportação, sistema bloqueado/suspenso, segundo monitor, VoiceOver, clipboard e HOTP com Keychain real após restart. Código dessas rotas existe; mocks não comprovam esses testes.
+- Tarefa 10.5 permanece aberta para a extensão completa no navegador. Interoperabilidade dos codecs claro/v3 já foi comprovada nos dois sentidos por fixtures e CryptoJS/Argon2; não equivale à execução da extensão.
+- CI está configurado e ainda não foi executado no GitHub. Gatekeeper/quarentena e confiança de ACL após atualizar o binário permanecem documentados como verificações futuras.

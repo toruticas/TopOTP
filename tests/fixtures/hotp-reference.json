@@ -1,0 +1,47 @@
+[
+  {
+    "algorithm": "SHA1",
+    "counter": 0,
+    "code": "755224"
+  },
+  {
+    "algorithm": "SHA1",
+    "counter": 7,
+    "code": "162583"
+  },
+  {
+    "algorithm": "SHA1",
+    "counter": 123456,
+    "code": "746508"
+  },
+  {
+    "algorithm": "SHA256",
+    "counter": 0,
+    "code": "875740"
+  },
+  {
+    "algorithm": "SHA256",
+    "counter": 7,
+    "code": "579288"
+  },
+  {
+    "algorithm": "SHA256",
+    "counter": 123456,
+    "code": "958595"
+  },
+  {
+    "algorithm": "SHA512",
+    "counter": 0,
+    "code": "125165"
+  },
+  {
+    "algorithm": "SHA512",
+    "counter": 7,
+    "code": "588359"
+  },
+  {
+    "algorithm": "SHA512",
+    "counter": 123456,
+    "code": "141821"
+  }
+]
