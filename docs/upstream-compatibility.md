@@ -6,7 +6,7 @@ Pesquisa de planejamento realizada em 14/10/2026. Referência: [Authenticator-Ex
 
 O [package.json](https://github.com/Authenticator-Extension/Authenticator/blob/9d9660bb73700b3e725800edc22836662d94afac/package.json) usa TypeScript, Vue 2.7, Vuex e Webpack. Persistência e fluxos de importação dependem de APIs de extensão, incluindo `chrome.storage`. TopOTP adotará Vue 3/Vite e adaptadores nativos; portar o runtime da extensão integralmente não atende à separação de segurança proposta.
 
-A [licença MIT](https://github.com/Authenticator-Extension/Authenticator/blob/9d9660bb73700b3e725800edc22836662d94afac/LICENSE) permite reaproveitamento com preservação dos avisos. Qualquer código ou asset copiado deve ser identificado em `THIRD_PARTY_NOTICES.md` na implementação, com a licença completa e referência ao commit. Nenhum código/asset da extensão foi incorporado nesta etapa de planejamento.
+A [licença MIT](https://github.com/Authenticator-Extension/Authenticator/blob/9d9660bb73700b3e725800edc22836662d94afac/LICENSE) permite reaproveitamento com preservação dos avisos. Os módulos usados exclusivamente como referência de testes estão identificados em [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md), com licença completa, commit e checksums. Eles não integram o bundle do aplicativo.
 
 ## Formatos observados
 
@@ -21,19 +21,36 @@ A [licença MIT](https://github.com/Authenticator-Extension/Authenticator/blob/9
 
 ## Matriz de escopo inicial
 
-| Recurso                                                         | Decisão para TopOTP                                                                                                             |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| TOTP, seed Base32, SHA-1/SHA-256/SHA-512, 6–8 dígitos           | Suportar e comparar com vetores RFC e fixtures da extensão.                                                                     |
-| HOTP SHA-1, seed Base32, 6–8 dígitos                            | Suportar; o contador persistido significa o próximo valor a consumir.                                                           |
-| HOTP SHA-256/SHA-512                                            | Suportar como variantes de interoperabilidade da extensão, separadas dos vetores normativos SHA-1 do RFC 4226.                  |
-| Período TOTP personalizado, emissor, conta, ordenação e fixação | Preservar os valores válidos; período inteiro de 1–86400 segundos. Defaults: SHA-1, 6 dígitos, 30 segundos.                     |
-| JSON sem criptografia e JSON v3 criptografado                   | Importação planejada; desserialização e descriptografia ocorrem no Rust.                                                        |
-| Exportação de backups                                           | Escopo definido em `proposal.md` e `design.md` da mudança; este documento descreve os formatos, não autoriza exportações reais. |
-| Steam, Battle.net, `hex`/`hhex`, GOST                           | Fora do escopo inicial; reportar entradas não suportadas, sem descartá-las silenciosamente.                                     |
-| Google `otpauth-migration://`, captura de tela, câmera e QR     | Fora do escopo inicial; adicionar em mudanças próprias.                                                                         |
-| Browser storage, sincronização Chrome, Drive/Dropbox/OneDrive   | Não portar; persistência será Keychain local.                                                                                   |
+| Recurso                                                         | Decisão para TopOTP                                                                                            |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| TOTP, seed Base32, SHA-1/SHA-256/SHA-512, 6–8 dígitos           | Suportar e comparar com vetores RFC e fixtures da extensão.                                                    |
+| HOTP SHA-1, seed Base32, 6–8 dígitos                            | Suportar; o contador persistido significa o próximo valor a consumir.                                          |
+| HOTP SHA-256/SHA-512                                            | Suportar como variantes de interoperabilidade da extensão, separadas dos vetores normativos SHA-1 do RFC 4226. |
+| Período TOTP personalizado, emissor, conta, ordenação e fixação | Preservar os valores válidos; período inteiro de 1–86400 segundos. Defaults: SHA-1, 6 dígitos, 30 segundos.    |
+| JSON sem criptografia e JSON v3 criptografado                   | Importação implementada e testada pela interface; desserialização e descriptografia ocorrem no Rust.           |
+| Exportação de backups                                           | JSON claro/v3 verificados pelo importador original; seleção, nova autenticação e destino passam pelo app.      |
+| Steam, Battle.net, `hex`/`hhex`, GOST                           | Fora do escopo inicial; reportar entradas não suportadas, sem descartá-las silenciosamente.                    |
+| Google `otpauth-migration://`, captura de tela, câmera e QR     | Fora do escopo inicial; adicionar em mudanças próprias.                                                        |
+| Browser storage, sincronização Chrome, Drive/Dropbox/OneDrive   | Não portar; persistência será Keychain local.                                                                  |
 
 O [comportamento HOTP observado](https://github.com/Authenticator-Extension/Authenticator/blob/9d9660bb73700b3e725800edc22836662d94afac/src/models/otp.ts) gera com o contador atual e depois incrementa/persiste. TopOTP manterá essa interpretação do contador, mas persistirá o incremento **antes** de liberar o código para a interface/clipboard. Um encerramento nesse intervalo pode consumir um valor; reutilizar um valor consumido não é aceitável.
+
+## Compatibilidade verificada e ajustes necessários
+
+Em 14/10/2026, `npm run test:interop` executou os módulos originais do commit fixado, preservados em `tests/reference/authenticator/`. O Rust exporta JSON claro/v3; `decryptBackupData` → `EntryStorage.import` → `EntryStorage.get` importam na referência, como no fluxo de arquivo da extensão. Os testes comparam TOTP/HOTP SHA1/256/512, 6–8 dígitos, período 45 s, defaults, Unicode, ordem/fixação e códigos em sete instantes. HOTP é gerado/incrementado/persistido pela referência e comparado ao próximo contador nativo. `EntryStorage.getExport`/`Encryption` reexportam e o Rust reimporta ambos os formatos.
+
+Esse teste encontrou duas diferenças que as fixtures anteriores, calculadas apenas pela fórmula criptográfica, não detectavam:
+
+- O [importador original](https://github.com/Authenticator-Extension/Authenticator/blob/9d9660bb73700b3e725800edc22836662d94afac/src/models/storage.ts) usa `parseInt` nos campos `type` e `algorithm`. Nomes como `hotp` e `SHA256`, embora gerados pelo exportador da própria extensão, causam perda de tipo, algoritmo e período customizado nessa rotina. TopOTP exporta **strings numéricas**: `type: "1"/"2"` para TOTP/HOTP e `algorithm: "1"/"2"/"3"` para SHA1/256/512. O formato continua tendo os campos string de `RawOTPStorage`, e a importação real preserva os parâmetros. TopOTP aceita tanto esses números em strings quanto os nomes originais. Não substituir por nomes na exportação sem rodar o teste de interoperabilidade.
+- O [exportador original](https://github.com/Authenticator-Extension/Authenticator/blob/9d9660bb73700b3e725800edc22836662d94afac/src/models/storage.ts) marca o **registro interno** de um envelope v3 com `encrypted: true`. Após descriptografar o envelope completo e verificar `dataType/hash`, TopOTP aceita essa marca. Um registro fora de `EncOTPStorage` com `encrypted: true` continua sendo formato legado não suportado. A fixture v3 agora é produzida pelo exportador original e cobre essa diferença.
+
+O teste também exige que `Key.id` corresponda à chave no objeto JSON, como `findAndUnlockKey` exige. Arquivos mistos podem apresentar contas claras imediatamente e solicitar as senhas das entradas restantes. Senha incorreta não altera o cofre.
+
+`npm run test:e2e` confirmou esses fluxos pelo WKWebView do TopOTP: importação clara/v3 com duas senhas, tentativa incorreta/cancelamento, exportações clara/v3, senha UTF-8, confirmação/consentimento, permissões de arquivo `0600`, reimportação e duplicatas que mantêm um contador HOTP mais recente. Os arquivos exportados pelo app também são consumidos pelo importador original.
+
+O harness usa armazenamento/configurações de navegador em memória, relógio controlado e um adaptador da API `argon2-browser` para Argon2 Node. Mantém os corpos originais de importação/exportação/OTP e verifica SHA-256 dos fontes. Isso demonstra interoperabilidade dessas rotinas; a extensão completa no navegador e os diálogos nativos reais não são automatizados por ele. Não usa credenciais reais.
+
+AES-CBC/OpenSSL no envelope compatível **não autentica integridade**. A verificação de senha e validação de registros não transformam o formato em criptografia autenticada. Ele serve para intercâmbio explícito; o cofre local continua no Keychain. Backups criptografados anteriores ao v3 continuam exigindo reexportação pela extensão.
 
 ## Orientações de implementação
 

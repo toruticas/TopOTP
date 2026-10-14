@@ -317,9 +317,7 @@ pub async fn export_accounts(
 fn import_bytes(_app: &tauri::AppHandle) -> AppResult<Zeroizing<Vec<u8>>> {
     #[cfg(feature = "e2e")]
     {
-        Ok(Zeroizing::new(
-            include_bytes!("../../../tests/fixtures/authenticator-plain.json").to_vec(),
-        ))
+        crate::application::transfer::read_bounded(&crate::e2e::root().join("import-source.json"))
     }
     #[cfg(not(feature = "e2e"))]
     {

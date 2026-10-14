@@ -11,7 +11,7 @@ Desbloqueio por **Touch ID ou senha do macOS, sem conta Apple**. Touch ID foi co
 - Importação/exportação pela interface: JSON claro e Authenticator v3 criptografado, múltiplas senhas, prévia/seleção e duplicatas preservadas.
 - Sessões limitadas, revogação de operações antigas, commits com recuperação e IPC restrito ao painel local.
 
-Compatibilidade de codec validada com fixtures sintéticas e CryptoJS/Argon2 independentes usando o formato de [Authenticator-Extension/Authenticator](https://github.com/Authenticator-Extension/Authenticator) no commit fixado. Testes E2E usam adaptadores nativos sintéticos; a extensão completa no navegador ainda não foi testada.
+Importação/exportação verificadas contra as funções originais de [Authenticator-Extension/Authenticator](https://github.com/Authenticator-Extension/Authenticator) no commit fixado: JSON claro/v3, códigos TOTP, parâmetros e próximo contador HOTP. Testes E2E exercitam ambos os formatos pelo app, com adaptadores nativos sintéticos. A extensão completa no navegador ainda não foi testada. Veja [detalhes e diferenças de formato](docs/upstream-compatibility.md).
 
 ## Executar e compilar
 
@@ -31,4 +31,4 @@ A mudança [create-macos-menu-bar-authenticator](openspec/changes/create-macos-m
 
 ## Licença
 
-MIT. Código e ícones originais; nenhum código/asset do upstream foi copiado. Consulte [proveniência das fixtures](tests/fixtures/README.md).
+MIT. Aplicativo e ícones originais; os testes incluem módulos upstream com licença e checksums preservados. Consulte [atribuições](THIRD_PARTY_NOTICES.md) e [proveniência das fixtures](tests/fixtures/README.md).

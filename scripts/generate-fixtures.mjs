@@ -1,18 +1,11 @@
-// Independent reference using the upstream algorithms, no upstream code copied.
+// Synthetic inputs; v3 entries are serialized by the pinned original routines.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createHmac } from 'node:crypto';
-import argon2 from 'argon2';
 import CryptoJS from 'crypto-js';
+import { loadReference } from '../tests/compatibility/reference.mjs';
+const reference = loadReference();
 const root = new URL('../tests/fixtures/', import.meta.url);
 await mkdir(root, { recursive: true });
-const options = {
-  type: argon2.argon2id,
-  memoryCost: 19456,
-  timeCost: 2,
-  parallelism: 1,
-  hashLength: 32,
-  version: 19,
-};
 const plain = {
   '11111111-1111-4111-8111-111111111111': {
     dataType: 'OTPStorage',
@@ -49,27 +42,29 @@ const plain = {
 };
 async function encryptedEntry(id, record, keyId, password, doc) {
   const salt = keyId;
-  const raw = await argon2.hash(password, {
-    ...options,
-    salt: Buffer.from(salt),
-    raw: true,
-  });
-  const derived = raw.toString('base64').replace(/=+$/, '');
-  const hash = await argon2.hash(derived, {
-    ...options,
-    salt: Buffer.from('synthetic-verifier-salt'),
-  });
+  const derived = (await reference.derive(password, salt)).split('$')[5];
+  const hash = await reference.derive(derived, 'synthetic-verifier-salt');
   doc[keyId] = { dataType: 'Key', id: keyId, salt, hash, version: 3 };
-  doc[id] = {
-    dataType: 'EncOTPStorage',
-    keyId,
-    data: CryptoJS.AES.encrypt(
-      JSON.stringify({ ...record, dataType: 'OTPStorage', encrypted: false }),
-      derived,
-      { salt: CryptoJS.enc.Hex.parse('0102030405060708') },
-    ).toString(),
-    index: record.index,
-  };
+  const entry = new reference.OTPEntry(
+    {
+      ...record,
+      type: reference.OTPType[record.type],
+      algorithm: reference.OTPAlgorithm[record.algorithm ?? 'SHA1'],
+    },
+    new reference.Encryption(derived, keyId),
+  );
+  // Deterministic randomness only for this fixture generator; the original
+  // export/AES implementation and inner encrypted:true marker are unchanged.
+  const random = CryptoJS.lib.WordArray.random;
+  try {
+    CryptoJS.lib.WordArray.random = (size) => {
+      if (size !== 8) throw new Error('Unexpected reference salt size');
+      return CryptoJS.enc.Hex.parse('0102030405060708');
+    };
+    doc[id] = reference.EntryStorage.getExport([entry], true)[id];
+  } finally {
+    CryptoJS.lib.WordArray.random = random;
+  }
 }
 const encrypted = {};
 for (const [i, [id, record]] of Object.entries(plain).entries())

@@ -75,7 +75,7 @@
 - [x] 10.2 Criar fluxo Exportar backup com seleção de contas/formato, criptografia v3 padrão, senha/confirmar senha transitórias e reconhecimento explícito da alternativa em texto claro.
 - [x] 10.3 Exigir autenticação nativa nova e diálogo de destino; gravar pelo backend com permissões restritas, ciphertext temporário/commit atômico ou destino final novo para texto claro, retornando somente status.
 - [ ] 10.4 Testar recusa de autenticação, senha não confirmada, cancelamento, bloqueio antes do commit e falha de arquivo, com limpeza de saídas incompletas e sem temporários em texto claro.
-- [ ] 10.5 Demonstrar ida e volta com a extensão de referência para backups claros/v3, igualdade de códigos TOTP e próximo contador HOTP; documentar a limitação de integridade do envelope de compatibilidade.
+- [x] 10.5 Demonstrar ida e volta com a extensão de referência para backups claros/v3, igualdade de códigos TOTP e próximo contador HOTP; documentar a limitação de integridade do envelope de compatibilidade.
 
 ## 11. Verificação integrada e CI
 

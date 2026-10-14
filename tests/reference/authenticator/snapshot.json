@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/Authenticator-Extension/Authenticator",
+  "commit": "9d9660bb73700b3e725800edc22836662d94afac",
+  "license": "MIT",
+  "sha256": {
+    "src/import.ts": "8d15d9922cfb3ff5bca776217852cc53064bb57ef2981703105a6032aa308d01",
+    "src/argon.ts": "a8a2f3953a3f63347dcdd8907bb3e4fc1be32ba7cdf9024c8b6cd1afb0558a8a",
+    "src/models/storage.ts": "f20438adc8e448013c61668a9dbd390a6d21c3ce348b43a99822ad440d511cf1",
+    "src/models/otp.ts": "5f442e74dd70595587148f92281bb45f99e878500614844e98f113784e5d29ef",
+    "src/models/key-utilities.ts": "30f2e92618dfd4afe0b25ec868a2203be0b6cf207745130a60a32e5cdd8b2d8e",
+    "src/models/encryption.ts": "b8b629ce622b129c02f3400596d2a395a2a3a25c0c0c0dbfb71e221bf5c97e2d",
+    "LICENSE": "8cb341fcabd04649d7662104d6f952caca56558cf4a19b349b632e95d3debc7a"
+  }
+}

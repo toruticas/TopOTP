@@ -12,13 +12,13 @@ assert info["CFBundleIdentifier"] == "com.rafaelmariano.topotp"
 assert info["LSMinimumSystemVersion"] == "13.0"
 binary = app / "Contents/MacOS" / info["CFBundleExecutable"]
 data = binary.read_bytes()
-for marker in [b"WDIO_WEBDRIVER_PORT", b"wdio-webdriver", b"synthetic-export-password", b"topotp-synthetic-"]:
+for marker in [b"WDIO_WEBDRIVER_PORT", b"wdio-webdriver", b"synthetic-export-password", b"topotp-synthetic-", b"import-source.json", b"tests/compatibility/reference-roundtrip.mjs"]:
     assert marker not in data, f"Test marker in production binary: {marker!r}"
 assert not any("chromium" in p.name.lower() or "electron" in p.name.lower() or p.name == "node" for p in app.rglob("*"))
-subprocess.run(["rtk", "proxy", "codesign", "--verify", "--deep", "--strict", str(app)], check=True, capture_output=True)
-signature = subprocess.run(["rtk", "proxy", "codesign", "-dvv", str(app)], check=True, capture_output=True, text=True)
+subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True, capture_output=True)
+signature = subprocess.run(["codesign", "-dvv", str(app)], check=True, capture_output=True, text=True)
 assert "Signature=adhoc" in signature.stderr
-architecture = subprocess.check_output(["rtk", "proxy", "lipo", "-archs", str(binary)], text=True).strip()
+architecture = subprocess.check_output(["lipo", "-archs", str(binary)], text=True).strip()
 capability = json.loads(Path("src-tauri/capabilities/panel.json").read_text())
 assert capability["windows"] == ["panel"]
 assert not capability.get("remote")

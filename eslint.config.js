@@ -11,6 +11,7 @@ export default tseslint.config(
       '.artifacts/**',
       'src-tauri/**',
       '.agents/**',
+      'tests/reference/authenticator/**',
     ],
   },
   js.configs.recommended,

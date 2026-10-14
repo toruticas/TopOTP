@@ -8,5 +8,6 @@ package-lock.json
 Cargo.lock
 .agents/
 openspec/
+tests/reference/authenticator/
 
 src/lib/ipc/generated.ts

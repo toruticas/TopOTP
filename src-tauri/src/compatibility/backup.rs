@@ -43,6 +43,39 @@ pub struct Decoded {
     pub keys: Vec<KeyRequest>,
 }
 #[derive(Deserialize)]
+enum BackupKind {
+    #[serde(rename = "totp", alias = "1")]
+    Totp,
+    #[serde(rename = "hotp", alias = "2")]
+    Hotp,
+}
+impl From<BackupKind> for OtpKind {
+    fn from(value: BackupKind) -> Self {
+        match value {
+            BackupKind::Totp => Self::Totp,
+            BackupKind::Hotp => Self::Hotp,
+        }
+    }
+}
+#[derive(Deserialize)]
+enum BackupAlgorithm {
+    #[serde(alias = "1")]
+    SHA1,
+    #[serde(alias = "2")]
+    SHA256,
+    #[serde(alias = "3")]
+    SHA512,
+}
+impl From<BackupAlgorithm> for OtpAlgorithm {
+    fn from(value: BackupAlgorithm) -> Self {
+        match value {
+            BackupAlgorithm::SHA1 => Self::SHA1,
+            BackupAlgorithm::SHA256 => Self::SHA256,
+            BackupAlgorithm::SHA512 => Self::SHA512,
+        }
+    }
+}
+#[derive(Deserialize)]
 struct Raw {
     #[serde(rename = "dataType", default)]
     data_type: Option<String>,
@@ -52,13 +85,13 @@ struct Raw {
     encrypted: bool,
     secret: Zeroizing<String>,
     #[serde(rename = "type")]
-    kind: OtpKind,
+    kind: BackupKind,
     #[serde(default)]
     issuer: String,
     #[serde(default)]
     account: String,
     #[serde(default)]
-    algorithm: Option<OtpAlgorithm>,
+    algorithm: Option<BackupAlgorithm>,
     #[serde(default)]
     digits: Option<u8>,
     #[serde(default)]
@@ -110,6 +143,9 @@ pub fn decode_with_progress(
             let key: Key =
                 serde_json::from_value(v.clone()).map_err(|_| AppError::UnsupportedFormat)?;
             if key.version != 3 {
+                return Err(AppError::UnsupportedFormat);
+            }
+            if key.id != *id {
                 return Err(AppError::UnsupportedFormat);
             }
             if key.id.is_empty() || key.id.len() > 128 || !(8..=1024).contains(&key.salt.len()) {
@@ -225,7 +261,10 @@ pub fn decode_with_progress(
         };
         match serde_json::from_slice::<Raw>(&raw_bytes) {
             Ok(raw)
-                if !raw.encrypted
+                // In v3 the reference marks the *inner* record encrypted even
+                // though its secret is plain after the whole record decrypts.
+                // A legacy plain envelope with encrypted:true stays rejected.
+                if (!raw.encrypted || data_type == Some("EncOTPStorage"))
                     && (data_type != Some("EncOTPStorage")
                         || raw.data_type.as_deref() == Some("OTPStorage")
                             && raw.hash.as_deref() == Some(source_id)) =>
@@ -235,8 +274,8 @@ pub fn decode_with_progress(
                 let input = AccountInput {
                     issuer: raw.issuer,
                     account: raw.account,
-                    kind: raw.kind,
-                    algorithm: raw.algorithm.unwrap_or(OtpAlgorithm::SHA1),
+                    kind: raw.kind.into(),
+                    algorithm: raw.algorithm.map(Into::into).unwrap_or(OtpAlgorithm::SHA1),
                     digits: raw.digits.unwrap_or(6),
                     period: raw.period.unwrap_or(30),
                     next_counter: raw.counter.unwrap_or(0).to_string(),
@@ -284,8 +323,21 @@ pub fn encode(
         check()?;
         r.validate()?;
         let hash = r.id.to_string();
+        // The reference FileImport -> EntryStorage.import path uses parseInt
+        // for these fields. Its named-enum exports lose HOTP, algorithms and
+        // custom periods on import. Numeric strings preserve all three while
+        // remaining within its RawOTPStorage string field contract.
+        let kind = match r.kind {
+            OtpKind::Totp => "1",
+            OtpKind::Hotp => "2",
+        };
+        let algorithm = match r.algorithm {
+            OtpAlgorithm::SHA1 => "1",
+            OtpAlgorithm::SHA256 => "2",
+            OtpAlgorithm::SHA512 => "3",
+        };
         let raw = SensitiveJson(
-            json!({"dataType":"OTPStorage","encrypted":false,"secret":&*r.secret.encoded(),"type":r.kind,"hash":hash,"index":index,"issuer":r.issuer,"account":r.account,"algorithm":r.algorithm,"digits":r.digits,"period":r.period,"counter":r.next_counter,"pinned":pinned}),
+            json!({"dataType":"OTPStorage","encrypted":false,"secret":&*r.secret.encoded(),"type":kind,"hash":hash,"index":index,"issuer":r.issuer,"account":r.account,"algorithm":algorithm,"digits":r.digits,"period":r.period,"counter":r.next_counter,"pinned":pinned}),
         );
         let v = if let Some(pass) = &pass {
             let bytes = Zeroizing::new(
@@ -333,9 +385,19 @@ mod tests {
         let decoded = decode(bytes, &p, || Ok(())).unwrap();
         assert!(decoded.keys.is_empty());
         for (a, b) in plain.entries.iter().zip(&decoded.entries) {
+            assert_eq!(a.source_id, b.source_id);
+            assert_eq!(a.index, b.index);
+            assert_eq!(a.pinned, b.pinned);
+            assert!(a.issue.is_none() && b.issue.is_none());
             let a = a.record.as_ref().unwrap();
             let b = b.record.as_ref().unwrap();
-            assert!(a.same_identity(b));
+            assert_eq!(a.kind, b.kind);
+            assert_eq!(a.algorithm, b.algorithm);
+            assert_eq!(a.digits, b.digits);
+            assert_eq!(a.period, b.period);
+            assert_eq!(a.issuer, b.issuer);
+            assert_eq!(a.account, b.account);
+            assert_eq!(a.secret.bytes(), b.secret.bytes());
             assert_eq!(a.next_counter, b.next_counter);
         }
         let wrong = HashMap::from([(
@@ -345,6 +407,56 @@ mod tests {
         assert!(matches!(
             decode(bytes, &wrong, || Ok(())),
             Err(AppError::InvalidPassword)
+        ));
+    }
+    #[test]
+    fn mixed_backup_keeps_plain_entries_and_requests_only_remaining_keys() {
+        let mut mixed: Value = serde_json::from_slice(include_bytes!(
+            "../../../tests/fixtures/authenticator-v3.json"
+        ))
+        .unwrap();
+        mixed.as_object_mut().unwrap().insert(
+            "44444444-4444-4444-8444-444444444444".into(),
+            json!({"type":"totp","secret":"JBSWY3DPEHPK3PXP","index":3}),
+        );
+        let bytes = serde_json::to_vec(&mixed).unwrap();
+        let locked = decode(&bytes, &HashMap::new(), || Ok(())).unwrap();
+        assert_eq!(locked.keys.len(), 2);
+        assert_eq!(
+            locked.entries.iter().filter(|e| e.record.is_some()).count(),
+            1
+        );
+        let partial = HashMap::from([(
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa0".into(),
+            Zeroizing::new("synthetic-password-a".into()),
+        )]);
+        let decoded = decode(&bytes, &partial, || Ok(())).unwrap();
+        assert_eq!(decoded.keys.len(), 1);
+        assert_eq!(decoded.keys[0].id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1");
+        assert_eq!(
+            decoded
+                .entries
+                .iter()
+                .filter(|e| e.record.is_some())
+                .count(),
+            3
+        );
+        assert_eq!(decoded.entries[0].issue, Some("PasswordRequired"));
+    }
+    #[test]
+    fn key_object_id_must_match_its_map_key_as_required_by_original_import() {
+        let mut value: Value = serde_json::from_slice(include_bytes!(
+            "../../../tests/fixtures/authenticator-v3.json"
+        ))
+        .unwrap();
+        value["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa0"]["id"] = json!("different-key-id");
+        assert!(matches!(
+            decode(
+                &serde_json::to_vec(&value).unwrap(),
+                &HashMap::new(),
+                || Ok(())
+            ),
+            Err(AppError::UnsupportedFormat)
         ));
     }
     #[test]

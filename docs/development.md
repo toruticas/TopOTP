@@ -20,6 +20,7 @@ rtk proxy npm run lint
 rtk proxy npm run format:check
 rtk proxy npm run test
 rtk proxy npm run test:rust
+rtk proxy npm run test:interop
 rtk proxy npm run check:rust
 rtk proxy npm run format:rust
 rtk proxy npm run test:e2e
@@ -39,9 +40,11 @@ rtk proxy npm run tauri:build
 - `commands`: IPC específico, autorização da janela/origem e diálogos nativos.
 - `src/features`: formulários; `src/lib/ipc`: contratos/cliente; `src/app`: apresentação transitória e descarte de respostas antigas.
 
-A suíte cobre RFC 4226/6238, mudanças de relógio, defaults/URIs, fixtures cruzadas, recuperação, falhas de gravação, concorrência HOTP e revogação durante trabalho. Vitest verifica estados e limpeza de formulários. WebdriverIO dirige o WKWebView real usando o provider embedded.
+A suíte cobre RFC 4226/6238, mudanças de relógio, defaults/URIs, fixtures cruzadas, recuperação, falhas de gravação, concorrência HOTP e revogação durante trabalho. `test:interop` executa importação/exportação/OTP originais da extensão contra o Rust, nos dois formatos e sentidos, sem rede; faz parte de `test:rust` e requer as dependências npm instaladas. Vitest verifica estados e limpeza de formulários. WebdriverIO dirige o WKWebView real usando o provider embedded: importação com/sem senha, múltiplas chaves, senha incorreta/cancelamento, exportação clara/v3, reimportação e duplicatas com HOTP mais recente. Exportações do app também passam pelo importador original.
 
 O build E2E vive em `.artifacts/e2e-target`, tem identificador `.e2e` e usa adaptadores sintéticos de autenticação, armazenamento, arquivo e clipboard. O domínio, IPC, commits e codecs são os reais. Não acessa o Keychain do usuário. A feature E2E é proibida em release por `compile_error!`; nenhum parâmetro de ambiente habilita mocks no build normal. Esses testes não comprovam biometria, observação de bloqueio do sistema ou VoiceOver.
+
+O harness escolhe o arquivo sintético copiando-o para `.artifacts/e2e/import-source.json`; somente o build E2E lê esse caminho fixo. Exportações de teste ficam no mesmo diretório. Não use arquivos pessoais nesses testes.
 
 O serviço Tauri requer WebdriverIO 9; versões de globals/webdriverio são unificadas por overrides para evitar instâncias de estado distintas. `basic-ftp` e `serialize-javascript` têm overrides corrigidos. O audit de dependências de produção está limpo. Ainda há alertas transitivos de desenvolvimento em `extract-zip`/`braces`, sem versão corrigida disponível na consulta; o provider embedded não baixa drivers/arquivos ZIP. Não habilite providers que baixem binários nem use arquivos de terceiros nesses componentes sem revisar os alertas.
 
@@ -55,7 +58,7 @@ rtk proxy npm run tauri:build -- --target x86_64-apple-darwin --ci
 
 O wrapper cria o `.app` ad hoc e empacota o `.dmg` por `hdiutil`, sem automação do Finder. O script DMG padrão do Tauri falhou nesta máquina; o empacotamento direto foi executado com sucesso. O CLI sinaliza depreciação de `hdiutil create` no macOS 27; permanece disponível e é compatível com os sistemas de desenvolvimento anteriores.
 
-Saídas: `src-tauri/target/<target>/release/bundle/{macos,dmg}`. Manifests também são separados: subdiretório `dev` para debug e `vault` para produção no diretório de dados do app, além dos serviços Keychain distintos. `--debug --bundles app` cria somente o `.app` de debug. `scripts/inspect-release.py <app>` verifica assinatura, arquitetura, deployment target e ausência de componentes de testes/Node/Chromium. CI em `.github/workflows/ci.yml` roda checks e gera bundles sem segredos Apple; o workflow ainda não foi executado no GitHub.
+Saídas: `src-tauri/target/<target>/release/bundle/{macos,dmg}`. Manifests também são separados: subdiretório `dev` para debug e `vault` para produção no diretório de dados do app, além dos serviços Keychain distintos. `--debug --bundles app` cria somente o `.app` de debug. `scripts/inspect-release.py <app>` verifica assinatura, arquitetura, deployment target e ausência de componentes de testes/Node/Chromium. CI em `.github/workflows/ci.yml` roda checks e gera bundles sem segredos Apple. Na [primeira execução](https://github.com/toruticas/TopOTP/actions/runs/38589241973), o job de checks passou; a inspeção de bundle falhou porque o helper chamava RTK, ausente no runner. O helper foi corrigido para chamar as ferramentas macOS diretamente e passou na validação local.
 
 ## Segurança nativa
 
