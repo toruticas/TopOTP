@@ -10,6 +10,11 @@ with (app / "Contents/Info.plist").open("rb") as file:
     info = plistlib.load(file)
 assert info["CFBundleIdentifier"] == "com.rafaelmariano.topotp"
 assert info["LSMinimumSystemVersion"] == "13.0"
+config = json.loads(Path("src-tauri/tauri.conf.json").read_text())
+version = config["version"]
+assert json.loads(Path("package.json").read_text())["version"] == version
+assert info["CFBundleShortVersionString"] == version
+assert info["CFBundleVersion"] == config["bundle"]["macOS"].get("bundleVersion", version)
 binary = app / "Contents/MacOS" / info["CFBundleExecutable"]
 data = binary.read_bytes()
 for marker in [b"WDIO_WEBDRIVER_PORT", b"wdio-webdriver", b"synthetic-export-password", b"synthetic-import-password", b"imported-numeric-kind", b"topotp-synthetic-", b"import-source.json", b"tests/compatibility/reference-roundtrip.mjs"]:
@@ -23,7 +28,7 @@ capability = json.loads(Path("src-tauri/capabilities/panel.json").read_text())
 assert capability["windows"] == ["panel"]
 assert not capability.get("remote")
 assert all(p.startswith("allow-") or p in ["core:event:allow-listen", "core:event:allow-unlisten"] for p in capability["permissions"])
-report = {"bundle": str(app), "architecture": architecture, "minimumMacOS": info["LSMinimumSystemVersion"], "adhocSignatureVerified": True, "testPluginMarkersAbsent": True, "embeddedNodeChromiumAbsent": True, "capabilityReviewed": True, "nativeAuthenticationManual": "pending", "notarized": False}
+report = {"bundle": str(app), "version": version, "bundleVersion": info["CFBundleVersion"], "architecture": architecture, "minimumMacOS": info["LSMinimumSystemVersion"], "adhocSignatureVerified": True, "testPluginMarkersAbsent": True, "embeddedNodeChromiumAbsent": True, "capabilityReviewed": True, "nativeAuthenticationManual": "pending", "notarized": False}
 folder = Path(".artifacts"); folder.mkdir(exist_ok=True)
 path = folder / f"release-inspection-{architecture}.json"
 path.write_text(json.dumps(report, indent=2) + "\n"); path.chmod(0o600)

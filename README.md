@@ -4,6 +4,8 @@ Autenticador **TOTP/HOTP para a barra de menus do macOS**, com Vue 3/TypeScript 
 
 Desbloqueio por **Touch ID ou senha do macOS, sem conta Apple**. Touch ID foi confirmado pelo usuário no `.app` ad hoc. A autenticação protege a sessão do aplicativo; o item do Keychain usa ACL do app e não possui uma exigência biométrica independente.
 
+Versão de testes: **[v0.0.1-beta.1](https://github.com/toruticas/TopOTP/releases/tag/v0.0.1-beta.1)**. Os pacotes `.dmg` para Apple Silicon e Intel e seus checksums ficam no pré-release. A versão estável `v0.0.1` fica reservada para depois das validações mínimas do produto.
+
 ## Recursos implementados
 
 - TOTP/HOTP SHA-1/256/512, 6–8 dígitos, períodos personalizados e contador persistido antes da exibição.
@@ -24,7 +26,7 @@ rtk proxy npm run tauri:dev
 rtk proxy npm run tauri:build
 ```
 
-O build cria `.app` e `.dmg` locais com assinatura ad hoc. Builds arm64 e x86_64 foram gerados; Intel e macOS 13 ainda aguardam execução correspondente. Não há publicação/notarização nesta mudança.
+O build cria `.app` e `.dmg` com assinatura ad hoc, sem notarização. Builds arm64 e x86_64 foram gerados; Intel e macOS 13 ainda aguardam execução correspondente. O pré-release é experimental e mantém essas limitações documentadas.
 
 Consulte [uso e recuperação](docs/usage.md), [desenvolvimento e checks](docs/development.md), [evidências nativas](docs/native-verification.md) e [compatibilidade upstream](docs/upstream-compatibility.md).
 

@@ -20,7 +20,7 @@ A referência auditada é o commit `9d9660bb73700b3e725800edc22836662d94afac` do
 - Não portar Vuex/Webpack/browser storage nem o background script integralmente.
 - Não criar mecanismo próprio de senha mestre, criptografia do cofre ou sincronização; o armazenamento persistente será Keychain local.
 - Não introduzir API pública de exportação de seed, acesso genérico a filesystem/clipboard ou fallback automático de armazenamento.
-- Não medir nem prometer tamanho final de binário antes do build, nem obter credenciais de assinatura ou publicar distribuição nesta etapa.
+- Não medir nem prometer tamanho final de binário antes do build, nem obter credenciais de assinatura ou publicar uma versão estável antes das validações mínimas.
 
 ## Decisions
 
@@ -167,6 +167,8 @@ Um protótipo `.app` nativo comprova persistência no Keychain tradicional e ACL
 Para desktop, usar WebdriverIO com serviço Tauri e provider embedded em um build exclusivo de testes, de acordo com a [documentação atual](https://v2.tauri.app/develop/tests/webdriver/) e [WebdriverIO](https://webdriver.io/docs/desktop-testing/tauri). Asserções de UI automatizadas não substituem autenticação nativa real. Plugins/servidor de automação e APIs de mock serão compilados somente na configuração de teste; verificar ausência no bundle final.
 
 Registrar smoke tests reais: iniciar bloqueado, abrir/fechar/reabrir, teclado/VoiceOver, dois monitores, Touch ID/senha/cancelar, sistema bloqueado/suspenso, falha de armazenamento, importação/exportação pelo app e restart HOTP. Preparar builds locais arm64/x86_64 com mínimo macOS 13; suporte publicado exige evidência no target correspondente. Configurar build/entitlements/assinatura com identidade estável; não alegar notarização sem executá-la.
+
+A primeira distribuição de testes solicitada usa `0.0.1-beta.1` nos manifests npm/Cargo/Tauri e a tag `v0.0.1-beta.1`, associada ao commit da `main`. O GitHub a apresenta como pré-release, sem classificá-la como versão estável. Anexar DMGs Apple Silicon/Intel e `SHA256SUMS`; os pacotes recebem a versão do `Info.plist`, e a inspeção deve confirmar sua correspondência com os manifests. As notas registram assinatura ad hoc, ausência de notarização e verificações nativas pendentes. `v0.0.1` permanece reservada à primeira versão minimamente validada.
 
 ## Risks / Trade-offs
 

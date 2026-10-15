@@ -19,6 +19,7 @@ Leia nesta ordem:
 - Use as skills OpenSpec locais em `.agents/skills/`. Não execute `openspec init` novamente em um projeto já inicializado; esse comando pode migrar/remover atalhos globais.
 - Use os caminhos retornados por `openspec status` e `openspec instructions`. Não assuma que uma mudança está no diretório local caso o CLI indique uma store.
 - Execute comandos shell com o prefixo `rtk`; para comandos sem suporte específico, use `rtk proxy <comando>`.
+- Envie commits para `origin/main`. A branch local desta worktree pode ter outro nome; use `git push origin HEAD:main` para tornar o destino explícito.
 - Escreva comunicação e documentação do projeto em português brasileiro. Preserve os títulos estruturais exigidos pelo OpenSpec e os identificadores de código em inglês.
 - Não copie configurações ou código da extensão sem revisar dependências do navegador, segurança e licença. Registre origem, commit e licença de qualquer trecho reaproveitado.
 
@@ -54,3 +55,5 @@ Os scripts `dev`, `tauri:dev`, `build`, `tauri:build`, `typecheck`, `lint`, `for
 Validar comportamento por camadas: vetores RFC e importação no domínio; falhas de persistência e corridas de sessão nos casos de uso; estados e acessibilidade na UI; integração real de Keychain/Touch ID em um `.app` macOS. WebdriverIO para o desktop deve usar um build exclusivo de testes; os plugins de automação não podem integrar o release.
 
 Ao concluir uma tarefa, marcar somente itens comprovadamente entregues e registrar os testes executados. Diferenciar teste com adaptador simulado de teste nativo, build local de release assinado, e suporte planejado de suporte verificado.
+
+Canal atual: `0.0.1-beta.1`, tag `v0.0.1-beta.1`; `v0.0.1` será a primeira versão estável. Mantenha versões npm/Cargo/Tauri e lockfiles alinhadas. O nome do DMG deve vir da versão do `.app`, sem constante fixa no empacotador. Pré-releases no GitHub incluem DMGs por arquitetura e `SHA256SUMS`; builds permanecem ad hoc e não notarizados enquanto isso não mudar explicitamente.
