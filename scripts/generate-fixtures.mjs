@@ -83,6 +83,72 @@ await writeFile(
   new URL('authenticator-v3.json', root),
   JSON.stringify(encrypted, null, 2) + '\n',
 );
+// The original importer can persist numeric `type` values when importing a
+// named enum. backupGetExport preserves those encrypted records verbatim.
+// Exercise that real path, with normal and imported entries sharing one key.
+reference.reset();
+const importKeyId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const importPassword = 'synthetic-import-password';
+const importDerived = (
+  await reference.derive(importPassword, importKeyId)
+).split('$')[5];
+const importEncryption = new reference.Encryption(importDerived, importKeyId);
+await reference.BrowserStorage.set({
+  [importKeyId]: {
+    dataType: 'Key',
+    id: importKeyId,
+    salt: importKeyId,
+    hash: await reference.derive(importDerived, 'synthetic-verifier-salt'),
+    version: 3,
+  },
+});
+const originalRandom = CryptoJS.lib.WordArray.random;
+try {
+  CryptoJS.lib.WordArray.random = (size) => {
+    if (size !== 8) throw new Error('Unexpected reference salt size');
+    return CryptoJS.enc.Hex.parse('0102030405060708');
+  };
+  for (const record of Object.values(plain)) {
+    await reference.EntryStorage.add(
+      new reference.OTPEntry(
+        {
+          ...record,
+          type: reference.OTPType[record.type],
+          algorithm: reference.OTPAlgorithm[record.algorithm ?? 'SHA1'],
+        },
+        importEncryption,
+      ),
+    );
+  }
+  const importedId = '44444444-4444-4444-8444-444444444444';
+  await reference.EntryStorage.import(importEncryption, {
+    [importedId]: {
+      dataType: 'OTPStorage',
+      encrypted: false,
+      hash: importedId,
+      index: 3,
+      type: 'totp',
+      secret: 'MZXW6YTBOI',
+      issuer: 'Synthetic',
+      account: 'imported-numeric-kind',
+    },
+  });
+  const importedBackup = await reference.EntryStorage.backupGetExport(
+    importEncryption,
+    true,
+  );
+  const importedRaw = importEncryption.decryptEncSecret({
+    encData: importedBackup[importedId].data,
+  });
+  if (importedRaw?.type !== 1)
+    throw new Error('Original importer no longer reproduces numeric type');
+  await writeFile(
+    new URL('authenticator-v3-imported.json', root),
+    JSON.stringify(importedBackup, null, 2) + '\n',
+  );
+} finally {
+  CryptoJS.lib.WordArray.random = originalRandom;
+}
 const variants = [];
 for (const algorithm of ['sha1', 'sha256', 'sha512'])
   for (const counter of [0, 7, 123456]) {

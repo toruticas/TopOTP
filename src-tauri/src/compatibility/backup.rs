@@ -42,6 +42,35 @@ pub struct Decoded {
     pub entries: Vec<Entry>,
     pub keys: Vec<KeyRequest>,
 }
+// The original importer can persist a numeric enum when it receives a named
+// enum. Accept both JSON representations, while retaining the same allowlist.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BackupEnumValue {
+    Name(String),
+    Number(u8),
+}
+impl BackupEnumValue {
+    fn decode<T: serde::de::DeserializeOwned, E: serde::de::Error>(self) -> Result<T, E> {
+        let name = match self {
+            Self::Name(name) => name,
+            Self::Number(number) => number.to_string(),
+        };
+        T::deserialize(serde::de::value::StringDeserializer::<E>::new(name))
+    }
+}
+fn required_enum<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(
+    deserializer: D,
+) -> Result<T, D::Error> {
+    BackupEnumValue::deserialize(deserializer)?.decode()
+}
+fn optional_enum<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    Option::<BackupEnumValue>::deserialize(deserializer)?
+        .map(BackupEnumValue::decode)
+        .transpose()
+}
 #[derive(Deserialize)]
 enum BackupKind {
     #[serde(rename = "totp", alias = "1")]
@@ -84,13 +113,13 @@ struct Raw {
     #[serde(default)]
     encrypted: bool,
     secret: Zeroizing<String>,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", deserialize_with = "required_enum")]
     kind: BackupKind,
     #[serde(default)]
     issuer: String,
     #[serde(default)]
     account: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "optional_enum")]
     algorithm: Option<BackupAlgorithm>,
     #[serde(default)]
     digits: Option<u8>,
@@ -358,6 +387,118 @@ pub fn encode(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn backup_from_original_importer_keeps_all_mixed_enum_entries() {
+        let bytes = include_bytes!("../../../tests/fixtures/authenticator-v3-imported.json");
+        let locked = decode(bytes, &HashMap::new(), || Ok(())).unwrap();
+        assert_eq!(locked.keys.len(), 1);
+        assert_eq!(locked.entries.len(), 4);
+        assert!(locked.entries.iter().all(|e| e.record.is_none()));
+        let passwords = HashMap::from([(
+            locked.keys[0].id.clone(),
+            Zeroizing::new("synthetic-import-password".into()),
+        )]);
+        let decoded = decode(bytes, &passwords, || Ok(())).unwrap();
+        assert!(decoded.keys.is_empty());
+        assert_eq!(decoded.entries.len(), 4);
+        for entry in &decoded.entries {
+            assert!(entry.issue.is_none(), "{:?}", entry.issue);
+            assert!(entry.record.is_some());
+        }
+        let imported = decoded.entries[3].record.as_ref().unwrap();
+        assert_eq!(imported.account, "imported-numeric-kind");
+        assert_eq!(imported.kind, OtpKind::Totp);
+        assert_eq!(imported.algorithm, OtpAlgorithm::SHA1);
+        assert_eq!(imported.secret.bytes(), b"foobar");
+    }
+    #[test]
+    fn numeric_and_text_enums_preserve_supported_parameters() {
+        for (kind, expected_kind) in [
+            (json!(1), OtpKind::Totp),
+            (json!(2), OtpKind::Hotp),
+            (json!("1"), OtpKind::Totp),
+            (json!("2"), OtpKind::Hotp),
+            (json!("totp"), OtpKind::Totp),
+            (json!("hotp"), OtpKind::Hotp),
+        ] {
+            for (algorithm, expected_algorithm) in [
+                (json!(1), OtpAlgorithm::SHA1),
+                (json!(2), OtpAlgorithm::SHA256),
+                (json!(3), OtpAlgorithm::SHA512),
+                (json!("1"), OtpAlgorithm::SHA1),
+                (json!("2"), OtpAlgorithm::SHA256),
+                (json!("3"), OtpAlgorithm::SHA512),
+                (json!("SHA1"), OtpAlgorithm::SHA1),
+                (json!("SHA256"), OtpAlgorithm::SHA256),
+                (json!("SHA512"), OtpAlgorithm::SHA512),
+            ] {
+                let bytes = serde_json::to_vec(&json!({"synthetic":{
+                    "type":kind,"algorithm":algorithm,"secret":"JBSWY3DPEHPK3PXP",
+                    "counter":42,"period":45,"digits":8
+                }}))
+                .unwrap();
+                let decoded = decode(&bytes, &HashMap::new(), || Ok(())).unwrap();
+                let record = decoded.entries[0].record.as_ref().unwrap();
+                assert_eq!(record.kind, expected_kind);
+                assert_eq!(record.algorithm, expected_algorithm);
+                assert_eq!(record.period, 45);
+                assert_eq!(record.digits, 8);
+                assert_eq!(
+                    record.next_counter,
+                    if expected_kind == OtpKind::Hotp {
+                        42
+                    } else {
+                        0
+                    }
+                );
+            }
+        }
+    }
+    #[test]
+    fn unknown_or_non_integer_enums_never_fall_back_to_totp_or_sha1() {
+        for (field, bad_values) in [
+            (
+                "type",
+                vec![
+                    json!(0),
+                    json!(3),
+                    json!(4),
+                    json!(5),
+                    json!(6),
+                    json!(256),
+                    json!(-1),
+                    json!(1.5),
+                    json!(true),
+                    json!(null),
+                    json!("steam"),
+                    json!("unknown"),
+                ],
+            ),
+            (
+                "algorithm",
+                vec![
+                    json!(0),
+                    json!(4),
+                    json!(5),
+                    json!(256),
+                    json!(-1),
+                    json!(1.5),
+                    json!(true),
+                    json!("GOST3411_2012_256"),
+                    json!("unknown"),
+                ],
+            ),
+        ] {
+            for value in bad_values {
+                let mut raw = json!({"type":"totp","algorithm":"SHA1","secret":"JBSWY3DPEHPK3PXP"});
+                raw[field] = value;
+                let bytes = serde_json::to_vec(&json!({"synthetic":raw})).unwrap();
+                let decoded = decode(&bytes, &HashMap::new(), || Ok(())).unwrap();
+                assert!(decoded.entries[0].record.is_none());
+                assert_eq!(decoded.entries[0].issue, Some("UnsupportedOrInvalidRecord"));
+            }
+        }
+    }
     #[test]
     fn upstream_reference_plain_defaults_and_v3_multiple_keys() {
         let plain = decode(

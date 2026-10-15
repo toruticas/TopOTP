@@ -70,6 +70,7 @@
 - [x] 9.4 Criar fluxo Importar backup no painel com diálogo nativo, entrada transitória de senhas, prévia sem seeds e seleção/confirmar/cancelar, inteiramente utilizável pelo app.
 - [x] 9.5 Implementar duplicatas mantendo existente por padrão, recusa de redução HOTP, confirmação explícita de subconjunto e commit do conjunto aprovado pelo mecanismo de staging/manifesto.
 - [x] 9.6 Testar versões antigas/desconhecidas, arquivos excessivos, parâmetros criptográficos hostis, falhas de Keychain e bloqueio/cancelamento durante importação; nenhum dado descriptografado vai a disco ou para a UI.
+- [x] 9.7 Aceitar enums numéricos em JSON além de nomes/strings numéricas, reproduzindo backups v3 mistos por `EntryStorage.import`/`backupGetExport` originais e testando a importação completa sem alterar a autenticação nativa.
 
 ## 10. Exportação de backup pela interface
 
@@ -96,10 +97,12 @@
 ## Evidências e pendências da entrega
 
 - Touch ID confirmado pelo usuário no `.app` ad hoc; abertura pelo ícone do build final também confirmada.
-- 37 testes Rust (incluindo interoperabilidade com funções originais), 12 testes frontend e 3 testes E2E no WKWebView aprovados. Typecheck, lint, Prettier, rustfmt, Clippy e validação OpenSpec aprovados.
+- 40 testes Rust (incluindo interoperabilidade com funções originais), 12 testes frontend e 4 testes E2E no WKWebView aprovados. Typecheck, lint, Prettier, rustfmt, Clippy e validação OpenSpec aprovados.
 - Probes reais Swift/Rust comprovaram Keychain tradicional; outro executável recebeu negativa de acesso. Não foi exigida conta/perfil Apple.
 - `.app`/`.dmg` arm64/x86_64 gerados com assinatura ad hoc e inspecionados. Aplicativo arm64 iniciado localmente, sem listener TCP. Intel foi somente compilado.
 - Tarefas 2.3/2.4/2.5/5.3/10.4/11.3 permanecem abertas pelas partes que exigem senha/cancelamento, nova autenticação de exportação, sistema bloqueado/suspenso, segundo monitor, VoiceOver, clipboard e HOTP com Keychain real após restart. Código dessas rotas existe; mocks não comprovam esses testes.
 - Tarefa 10.5 concluída contra funções originais do commit fixado, preservadas com MIT/checksums. Ida e volta clara/v3, parâmetros, códigos TOTP/HOTP e contador foram comprovados; a extensão completa no navegador não foi executada.
+- Tarefa 9.7 reproduziu rejeição parcial com enums numéricos emitidos por `EntryStorage.import`/`backupGetExport` originais. O teste falhou antes da correção; depois, todas as quatro contas da fixture v3 de uma única senha foram importadas pelo WKWebView, com códigos comparados à referência. Também foram verificadas 54 combinações de enums e a rejeição de valores desconhecidos/negativos/fracionários. O arquivo pessoal foi examinado somente estruturalmente, sem senha/descriptografia e sem integrar fixtures ou testes.
+- Os bundles corrigidos de importação foram gerados e inspecionados em `.artifacts/import-fix/{aarch64-apple-darwin,x86_64-apple-darwin}/release/bundle/`. O `.app` estável do caminho original foi preservado, incluindo uma cópia exata em `.artifacts/stable-e741ad1/`; a nova versão não foi iniciada sobre o vault pessoal. A validação do backup pessoal exige repetir a importação localmente com a senha do usuário.
 - A [CI passou no commit `6b4907a`](https://github.com/toruticas/TopOTP/actions/runs/38602620026), incluindo o ajuste de posicionamento e retomada. Gatekeeper/quarentena e confiança de ACL após atualizar o binário permanecem documentados como verificações futuras.
 - Posicionamento usa pontos AppKit e retomada permanece apenas em memória por menos de 30 s. Os testes cobrem geometria Retina/bordas/origens negativas, busca, formulário, rolagem/foco, seleções, limpeza de senhas/seeds, limite exato e bloqueio. O usuário confirmou manualmente no macOS que o build `6b4907a` abre abaixo do ícone e retoma a mesma tela ao clicar fora e reabrir em menos de 30 segundos: “Sim, os dois funcionam”. A ferramenta de captura continua retornando `cgWindowNotFound`/timeout; execução real em segundo monitor segue pendente.

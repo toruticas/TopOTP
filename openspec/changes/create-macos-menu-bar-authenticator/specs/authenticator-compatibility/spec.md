@@ -40,6 +40,10 @@ O app MUST importar objetos JSON de registros `OTPStorage` não criptografados e
 - **WHEN** um backup v3 válido e as senhas de suas chaves são fornecidos
 - **THEN** suas entradas suportadas podem ser validadas e importadas sem enviar seeds ou conteúdo descriptografado à camada de apresentação
 
+#### Scenario: Mixed JSON enum representations
+- **WHEN** um backup claro ou v3 mistura nomes, strings numéricas e números JSON para tipos TOTP/HOTP e algoritmos SHA1/256/512, como pode ocorrer após importação na extensão original
+- **THEN** todas as entradas suportadas são reconhecidas com os mesmos parâmetros e códigos, sem interpretar números desconhecidos, fracionários ou negativos como defaults válidos
+
 #### Scenario: Wrong password or missing key
 - **WHEN** a senha não desbloqueia uma chave ou um `keyId` não possui registro `Key` correspondente
 - **THEN** o app apresenta erro de importação e não persiste as entradas afetadas nem assume que a importação inteira foi bem-sucedida

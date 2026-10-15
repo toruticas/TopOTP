@@ -12,7 +12,7 @@ assert info["CFBundleIdentifier"] == "com.rafaelmariano.topotp"
 assert info["LSMinimumSystemVersion"] == "13.0"
 binary = app / "Contents/MacOS" / info["CFBundleExecutable"]
 data = binary.read_bytes()
-for marker in [b"WDIO_WEBDRIVER_PORT", b"wdio-webdriver", b"synthetic-export-password", b"topotp-synthetic-", b"import-source.json", b"tests/compatibility/reference-roundtrip.mjs"]:
+for marker in [b"WDIO_WEBDRIVER_PORT", b"wdio-webdriver", b"synthetic-export-password", b"synthetic-import-password", b"imported-numeric-kind", b"topotp-synthetic-", b"import-source.json", b"tests/compatibility/reference-roundtrip.mjs"]:
     assert marker not in data, f"Test marker in production binary: {marker!r}"
 assert not any("chromium" in p.name.lower() or "electron" in p.name.lower() or p.name == "node" for p in app.rglob("*"))
 subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True, capture_output=True)
