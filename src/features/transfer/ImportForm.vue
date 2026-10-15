@@ -15,7 +15,8 @@ const passwords = reactive<Record<string, string>>({});
 const selected = ref(
   props.preview.rows
     .filter((r) => r.account && !r.issue)
-    .map((r) => r.account!.id),
+    .map((r) => r.account!.id)
+    .slice(0, props.preview.origin === 'qr' ? 1 : undefined),
 );
 const acknowledge = ref(false);
 const issues: Record<string, string> = {
@@ -43,7 +44,7 @@ onBeforeUnmount(clearSensitive);
   <section class="form-stack">
     <div class="section-title">
       <h2>
-        {{ preview.origin === 'uri' ? 'Revisar conta' : 'Importar backup' }}
+        {{ preview.origin !== 'backup' ? 'Revisar conta' : 'Importar backup' }}
       </h2>
       <button @click="emit('cancel')">Cancelar</button>
     </div>
@@ -72,7 +73,15 @@ onBeforeUnmount(clearSensitive);
       :key="row.sourceId"
       class="selection"
       ><input
-        v-if="row.account"
+        v-if="row.account && preview.origin === 'qr'"
+        type="radio"
+        :name="preview.id"
+        :value="row.account.id"
+        :checked="selected.includes(row.account.id)"
+        :disabled="!!row.issue || busy"
+        @change="selected = [row.account.id]"
+      /><input
+        v-else-if="row.account"
         v-model="selected"
         type="checkbox"
         :value="row.account.id"
@@ -88,10 +97,19 @@ onBeforeUnmount(clearSensitive);
         ><small v-else
           >{{ row.account?.kind.toUpperCase() }} ·
           {{ row.account?.algorithm }}</small
+        ><small v-if="preview.origin === 'qr' && row.account && !row.issue"
+          >{{ row.account.digits }} dígitos ·
+          {{
+            row.account.kind === 'totp'
+              ? `${row.account.period} s`
+              : `Próximo contador: ${row.account.nextCounter}`
+          }}</small
         ></span
       ></label
     >
-    <label v-if="selected.length !== preview.rows.length" class="selection"
+    <label
+      v-if="preview.origin !== 'qr' && selected.length !== preview.rows.length"
+      class="selection"
       ><input v-model="acknowledge" type="checkbox" /><span
         >Importar apenas a seleção e ignorar os demais registros.</span
       ></label
@@ -101,11 +119,19 @@ onBeforeUnmount(clearSensitive);
       :disabled="
         busy ||
         !selected.length ||
-        (selected.length !== preview.rows.length && !acknowledge)
+        (preview.origin !== 'qr' &&
+          selected.length !== preview.rows.length &&
+          !acknowledge)
       "
-      @click="emit('commit', selected, acknowledge)"
+      @click="emit('commit', selected, preview.origin === 'qr' || acknowledge)"
     >
-      {{ busy ? 'Importando…' : `Importar ${selected.length} conta(s)` }}
+      {{
+        busy
+          ? 'Salvando…'
+          : preview.origin === 'qr'
+            ? 'Salvar conta'
+            : `Importar ${selected.length} conta(s)`
+      }}
     </button>
   </section>
 </template>

@@ -17,6 +17,13 @@ impl Keychain {
         if !service.starts_with("com.rafaelmariano.topotp.") {
             return Err(AppError::invalid("service"));
         }
+        // SAFETY: The traditional Keychain API controls only Security's own UI,
+        // not the separate LocalAuthentication actor. A trust mismatch must fail
+        // closed; no item read or automatic refresh may open password dialogs.
+        // This legacy API is needed because the app uses the file-based Keychain.
+        #[allow(deprecated)]
+        let status = unsafe { objc2_security::SecKeychainSetUserInteractionAllowed(false) };
+        status_result(status)?;
         Ok(Self { service })
     }
 
@@ -125,6 +132,7 @@ fn status_result(status: i32) -> AppResult<()> {
     match status {
         0 => Ok(()),
         -128 => Err(AppError::Cancelled),
+        -25293 | -25308 => Err(AppError::KeychainAccessDenied),
         _ => Err(AppError::StorageUnavailable),
     }
 }
@@ -141,5 +149,20 @@ impl crate::application::vault::Store for Keychain {
     }
     fn delete(&mut self, id: uuid::Uuid) -> AppResult<()> {
         Keychain::delete(self, &id.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn denied_or_interactive_storage_has_a_distinct_error() {
+        for status in [-25293, -25308] {
+            assert!(matches!(
+                status_result(status),
+                Err(AppError::KeychainAccessDenied)
+            ));
+        }
+        assert!(matches!(status_result(-128), Err(AppError::Cancelled)));
     }
 }

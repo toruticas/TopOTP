@@ -2,6 +2,8 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "vault_status",
+            "management_ready",
+            "pending_preview",
             "unlock_vault",
             "lock_vault",
             "hide_panel",

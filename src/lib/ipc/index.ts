@@ -5,10 +5,14 @@ import type {
   Code,
   ImportPreview,
   VaultStatus,
+  ManagementRequest,
 } from './generated';
 export type * from './generated';
 export const api = {
   status: () => invoke<VaultStatus>('vault_status'),
+  managementReady: () => invoke<ManagementRequest | null>('management_ready'),
+  pendingPreview: (epoch: string) =>
+    invoke<ImportPreview | null>('pending_preview', { epoch }),
   unlock: () => invoke<VaultStatus>('unlock_vault'),
   lock: () => invoke<void>('lock_vault'),
   hide: () => invoke<void>('hide_panel'),
@@ -70,6 +74,12 @@ export function errorMessage(error: unknown): string {
       ? String(error.code)
       : '';
   const messages: Record<string, string> = {
+    ScreenCaptureDenied:
+      'Permita a gravação da tela nos Ajustes do Sistema e reabra o app, se necessário.',
+    CaptureUnavailable: 'Não foi possível capturar a região escolhida.',
+    NoQrCode: 'Nenhum QR Code encontrado na região escolhida.',
+    InvalidQrCode: 'O QR Code não contém uma conta OTP válida.',
+    CaptureTimedOut: 'A captura excedeu o tempo disponível. Tente novamente.',
     Locked: 'O cofre foi bloqueado. Desbloqueie para continuar.',
     Cancelled: 'Operação cancelada.',
     InvalidInput: 'Confira os campos e confirmações.',
@@ -77,6 +87,8 @@ export function errorMessage(error: unknown): string {
       'Formato não suportado. Reexporte o backup pela extensão atual.',
     StorageUnavailable:
       'Não foi possível acessar o Keychain ou gravar o arquivo.',
+    KeychainAccessDenied:
+      'Esta versão não tem acesso ao Keychain deste cofre. Conclua a migração da identidade; a leitura foi interrompida sem solicitar senhas.',
     NotFound: 'Conta ou prévia não encontrada.',
     CounterExhausted: 'O contador atingiu o limite suportado.',
     InvalidPassword: 'Senha do backup incorreta.',

@@ -56,6 +56,8 @@ AES-CBC/OpenSSL no envelope compatível **não autentica integridade**. A verifi
 
 ## Orientações de implementação
 
+A mudança `native-macos-quick-access` mantém os codecs e snapshots de referência. Importar/Exportar abrem a janela `management` a partir de Mais; continuam aceitando JSON claro/v3 e exigindo nova autenticação para exportação. O scanner nativo encaminha URIs TOTP/HOTP ao parser existente e à mesma persistência: revisão recebe somente metadados, uma conta é escolhida por operação e duplicatas preservam o HOTP existente. Captura regional não acrescenta suporte a Google migration, Steam ou câmera.
+
 - Não instalar ou executar o upstream inteiro em produção. Criar fixtures sintéticas reproduzíveis com a implementação de referência e registrar a origem de cada caso.
 - Testar defaults ausentes, metadados Unicode, ordens, múltiplos `keyId`, senha incorreta, versões desconhecidas e entradas não suportadas.
 - Limitar tamanho do arquivo, número de registros, comprimento de campos e custos Argon2 antes de alocar memória/derivar chaves. Tratar backup importado como entrada não confiável.

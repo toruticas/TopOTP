@@ -1,7 +1,6 @@
 import { browser, $, $$, expect } from '@wdio/globals';
 import { readFile, copyFile, mkdir, rm, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { loadReference } from '../compatibility/reference.mjs';
 import { verifyInOriginal } from '../compatibility/roundtrip.mjs';
@@ -27,20 +26,6 @@ definitions.push({
   secret: 'MZXW6YTBOI',
   type: 'totp',
 });
-
-async function openPanel() {
-  // The automation host can hide the startup panel by taking focus. Use the
-  // real single-instance opening path rather than changing production focus.
-  await new Promise((done, reject) => {
-    const child = spawn(resolve('.artifacts/e2e-target/debug/topotp'), [], {
-      stdio: 'ignore',
-    });
-    child.once('error', reject);
-    child.once('exit', (code) =>
-      code === 0 ? done() : reject(new Error(`Second launch: ${code}`)),
-    );
-  });
-}
 
 async function presentation() {
   return browser.executeAsync((done) => {
@@ -75,6 +60,7 @@ async function clearSyntheticVault() {
 
 async function beginImport(source) {
   await copyFile(resolve(source), resolve(artifacts, 'import-source.json'));
+  await expect($('button=Importar')).toBeEnabled();
   await $('button=Importar').click();
   await expect($('h2=Importar backup')).toBeDisplayed();
 }
@@ -205,10 +191,15 @@ async function exportBackup(encrypted) {
 describe('TopOTP transfer interoperability with synthetic native adapters', () => {
   before(async () => {
     await mkdir(artifacts, { recursive: true });
-    await openPanel();
     await expect($('button=Desbloquear')).toBeDisplayed();
     await $('button=Desbloquear').click();
     await expect($('button=Adicionar conta')).toBeDisplayed();
+    await $('button=Geral').click();
+    await expect($('h2=Configurações')).toBeDisplayed();
+    await expect($('.settings')).toHaveText(
+      expect.stringContaining('TopOTP 0.0.1-beta.1'),
+    );
+    await $('button=Contas').click();
   });
 
   it('imports plain JSON and exports both formats accepted by original import', async () => {

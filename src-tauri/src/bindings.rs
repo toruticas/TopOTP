@@ -2,6 +2,8 @@ use ts_rs::TS;
 pub fn source() -> String {
     let cfg = ts_rs::Config::default();
     let declarations = [
+        crate::shell::ManagementRoute::decl(&cfg),
+        crate::shell::ManagementRequest::decl(&cfg),
         crate::application::transfer::TransferProgress::decl(&cfg),
         crate::commands::ExportRequest::decl(&cfg),
         crate::domain::AppError::decl(&cfg),

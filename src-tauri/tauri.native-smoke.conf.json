@@ -1,0 +1,21 @@
+{
+  "productName": "TopOTP Teste Nativo",
+  "identifier": "com.rafaelmariano.topotp.native-smoke",
+  "app": {
+    "windows": [
+      {
+        "label": "management",
+        "title": "TopOTP — teste com contas sintéticas",
+        "width": 720,
+        "height": 620,
+        "visible": false,
+        "create": false,
+        "resizable": true,
+        "decorations": true,
+        "devtools": false,
+        "minWidth": 540,
+        "minHeight": 480
+      }
+    ]
+  }
+}

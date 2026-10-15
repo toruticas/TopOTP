@@ -13,7 +13,7 @@ use std::{
     collections::HashMap,
     sync::{
         Arc, Mutex, MutexGuard,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -25,6 +25,9 @@ use zeroize::Zeroizing;
 pub struct VaultStatus {
     pub phase: Phase,
     pub epoch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub legacy_migration_required: Option<bool>,
 }
 #[derive(Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +36,10 @@ pub struct Code {
     pub code: String,
     pub valid_until: Option<f64>,
     pub server_time: f64,
+}
+pub struct PresentationSnapshot {
+    pub accounts: Vec<AccountSummary>,
+    pub codes: Vec<Code>,
 }
 pub struct Inner {
     pub session: Session,
@@ -49,8 +56,30 @@ pub struct Core {
     clock: Arc<dyn Clock>,
     dialogs: AtomicUsize,
     revocation: AtomicU64,
+    legacy_migration: AtomicBool,
 }
 impl Core {
+    /// Shared native unlock path. The caller supplies intent, never approval.
+    pub async fn unlock(self: &Arc<Self>) -> AppResult<VaultStatus> {
+        let ticket = self.begin_unlock()?;
+        let _dialog = self.dialog();
+        match self
+            .auth
+            .authenticate("Desbloquear suas contas no TopOTP")
+            .await
+        {
+            Ok(proof) => {
+                let core = self.clone();
+                tauri::async_runtime::spawn_blocking(move || core.finish_unlock(ticket, proof))
+                    .await
+                    .map_err(|_| AppError::StorageUnavailable)?
+            }
+            Err(error) => {
+                self.fail_unlock(ticket);
+                Err(error)
+            }
+        }
+    }
     pub fn new(
         store: Box<dyn Store>,
         index: DiskIndex,
@@ -72,10 +101,25 @@ impl Core {
             clock,
             dialogs: AtomicUsize::new(0),
             revocation: AtomicU64::new(0),
+            legacy_migration: AtomicBool::new(false),
         })
     }
     pub fn now(&self) -> Duration {
         self.clock.elapsed()
+    }
+    /// Only the native factory detects the old opaque manifest. No old seed is read.
+    pub fn require_legacy_migration(&self) {
+        self.legacy_migration.store(true, Ordering::SeqCst);
+    }
+    fn vault_status(&self, inner: &Inner) -> VaultStatus {
+        if !inner.vault.references().is_empty() {
+            self.legacy_migration.store(false, Ordering::SeqCst);
+        }
+        VaultStatus {
+            phase: inner.session.phase,
+            epoch: inner.session.epoch.to_string(),
+            legacy_migration_required: self.legacy_migration.load(Ordering::SeqCst).then_some(true),
+        }
     }
     fn guard(&self) -> AppResult<MutexGuard<'_, Inner>> {
         self.inner.lock().map_err(|_| AppError::StorageUnavailable)
@@ -117,10 +161,7 @@ impl Core {
     pub fn status(&self) -> AppResult<VaultStatus> {
         self.tick();
         let inner = self.guard()?;
-        Ok(VaultStatus {
-            phase: inner.session.phase,
-            epoch: inner.session.epoch.to_string(),
-        })
+        Ok(self.vault_status(&inner))
     }
     pub fn begin_unlock(&self) -> AppResult<u64> {
         let mut inner = self.guard()?;
@@ -139,10 +180,7 @@ impl Core {
             self.revoke(&mut inner);
             return Err(error);
         }
-        Ok(VaultStatus {
-            phase: inner.session.phase,
-            epoch: inner.session.epoch.to_string(),
-        })
+        Ok(self.vault_status(&inner))
     }
     pub fn fail_unlock(&self, ticket: u64) {
         if let Ok(mut inner) = self.guard()
@@ -166,7 +204,14 @@ impl Core {
         if revocation != self.revocation.load(Ordering::SeqCst) {
             return Err(AppError::Locked);
         }
-        let result = work(&mut inner)?;
+        let result = match work(&mut inner) {
+            Ok(result) => result,
+            Err(AppError::KeychainAccessDenied) => {
+                self.revoke(&mut inner);
+                return Err(AppError::KeychainAccessDenied);
+            }
+            Err(error) => return Err(error),
+        };
         // Commits are serialized with lock. Duration expiration is checked again
         // before disclosure; a committed HOTP increment is never rolled back.
         if inner.session.expired(self.now()) || revocation != self.revocation.load(Ordering::SeqCst)
@@ -191,6 +236,38 @@ impl Core {
     }
     pub fn list(&self, epoch: &str) -> AppResult<Vec<AccountSummary>> {
         self.authorized(epoch, |i| i.vault.summaries())
+    }
+    /// A single authorized read per record supplies both native labels and OTPs.
+    pub fn presentation_snapshot(&self, epoch: &str) -> AppResult<PresentationSnapshot> {
+        self.authorized(epoch, |inner| {
+            let now = self.clock.unix_seconds();
+            let mut snapshot = PresentationSnapshot {
+                accounts: vec![],
+                codes: vec![],
+            };
+            for reference in inner.vault.references() {
+                let record = inner.vault.record(reference.id)?;
+                snapshot.accounts.push(record.summary(reference.pinned));
+                let value = if record.kind == OtpKind::Totp {
+                    let (code, until) = otp::totp(&record, now)?;
+                    Some((code, Some(until as f64)))
+                } else {
+                    inner
+                        .hotp
+                        .get(&record.id)
+                        .map(|code| (code.to_string(), None))
+                };
+                if let Some((code, valid_until)) = value {
+                    snapshot.codes.push(Code {
+                        id: record.id.to_string(),
+                        code,
+                        valid_until,
+                        server_time: now as f64,
+                    });
+                }
+            }
+            Ok(snapshot)
+        })
     }
     pub fn save(&self, epoch: &str, id: Option<Uuid>, input: AccountInput) -> AppResult<()> {
         self.authorized(epoch, |i| {

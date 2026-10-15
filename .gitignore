@@ -15,3 +15,4 @@ coverage/
 *.provisionprofile
 *.keychain-db
 *.log
+__pycache__/

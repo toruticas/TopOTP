@@ -5,16 +5,20 @@ pub mod clipboard;
 pub mod events;
 pub mod keychain;
 pub mod panel;
+pub mod quick_access;
+pub mod scan;
 
 #[cfg(feature = "native-probe")]
 pub mod probe;
 
 pub fn keychain_service() -> &'static str {
-    if cfg!(test) {
+    if cfg!(feature = "native-smoke") {
+        "com.rafaelmariano.topotp.native-smoke.signed.vault.v1"
+    } else if cfg!(test) {
         "com.rafaelmariano.topotp.test.vault"
     } else if cfg!(debug_assertions) {
-        "com.rafaelmariano.topotp.dev.vault"
+        "com.rafaelmariano.topotp.dev.signed.vault.v1"
     } else {
-        "com.rafaelmariano.topotp.vault"
+        "com.rafaelmariano.topotp.signed.vault.v1"
     }
 }

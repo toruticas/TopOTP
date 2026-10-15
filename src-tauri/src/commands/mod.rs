@@ -16,10 +16,13 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 fn client(window: &WebviewWindow) -> AppResult<()> {
-    if window.label() != "panel" {
+    let url = window.url().map_err(|_| AppError::Locked)?;
+    client_origin(window.label(), &url)
+}
+fn client_origin(label: &str, url: &tauri::Url) -> AppResult<()> {
+    if label != "management" {
         return Err(AppError::Locked);
     }
-    let url = window.url().map_err(|_| AppError::Locked)?;
     let local = url.scheme() == "tauri" && url.host_str() == Some("localhost")
         || cfg!(debug_assertions)
             && url.scheme() == "http"
@@ -29,6 +32,28 @@ fn client(window: &WebviewWindow) -> AppResult<()> {
         return Err(AppError::Locked);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ipc_accepts_only_management_at_the_packaged_local_origin() {
+        let local = tauri::Url::parse("tauri://localhost/index.html").unwrap();
+        assert!(client_origin("management", &local).is_ok());
+        for label in ["panel", "quick-access", "other", ""] {
+            assert!(client_origin(label, &local).is_err());
+        }
+        for origin in [
+            "https://localhost",
+            "https://example.invalid",
+            "tauri://other",
+            "file:///tmp/index.html",
+            "http://127.0.0.1:1421",
+        ] {
+            assert!(client_origin("management", &tauri::Url::parse(origin).unwrap()).is_err());
+        }
+    }
 }
 fn id(value: &str) -> AppResult<Uuid> {
     Uuid::parse_str(value).map_err(|_| AppError::invalid("id"))
@@ -52,36 +77,19 @@ pub async fn unlock_vault(
     core: State<'_, Arc<Core>>,
 ) -> AppResult<VaultStatus> {
     client(&window)?;
-    let ticket = core.begin_unlock()?;
-    let _dialog = core.dialog();
-    match core
-        .auth
-        .authenticate("Desbloquear suas contas no TopOTP")
-        .await
-    {
-        Ok(proof) => {
-            let c = core.inner().clone();
-            background(move || c.finish_unlock(ticket, proof)).await
-        }
-        Err(e) => {
-            core.fail_unlock(ticket);
-            Err(e)
-        }
-    }
+    core.inner().unlock().await
 }
 #[tauri::command]
-pub fn lock_vault(window: WebviewWindow, core: State<'_, Arc<Core>>) -> AppResult<()> {
+pub fn lock_vault(window: WebviewWindow) -> AppResult<()> {
     client(&window)?;
-    core.lock();
-    let _ = window.emit("vault-changed", ());
+    crate::shell::lock(window.app_handle());
     Ok(())
 }
 #[tauri::command]
-pub fn hide_panel(window: WebviewWindow, core: State<'_, Arc<Core>>) -> AppResult<()> {
+pub fn hide_panel(window: WebviewWindow) -> AppResult<()> {
     client(&window)?;
-    core.visibility(false);
-    let _ = window.emit("panel-hidden", ());
-    window.hide().map_err(|_| AppError::StorageUnavailable)
+    crate::shell::hide_management(window.app_handle());
+    Ok(())
 }
 #[tauri::command]
 pub fn user_interaction(
@@ -348,4 +356,24 @@ fn export_destination(_app: &tauri::AppHandle) -> AppResult<std::path::PathBuf> 
             .into_path()
             .map_err(|_| AppError::StorageUnavailable)
     }
+}
+
+#[tauri::command]
+pub fn management_ready(
+    window: WebviewWindow,
+    shell: State<'_, Arc<crate::shell::Shell>>,
+) -> AppResult<Option<crate::shell::ManagementRequest>> {
+    client(&window)?;
+    Ok(shell.take_route())
+}
+#[tauri::command]
+pub fn pending_preview(
+    window: WebviewWindow,
+    core: State<'_, Arc<Core>>,
+    epoch: String,
+) -> AppResult<Option<ImportPreview>> {
+    client(&window)?;
+    core.authorized(&epoch, |inner| {
+        Ok(inner.preview.as_ref().map(|preview| preview.preview()))
+    })
 }

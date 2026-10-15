@@ -206,6 +206,9 @@ impl Core {
                 .as_ref()
                 .filter(|p| p.id == id)
                 .ok_or(AppError::NotFound)?;
+            if p.origin == "qr" && selected.len() != 1 {
+                return Err(AppError::invalid("selection"));
+            }
             if selected.is_empty()
                 || selected.iter().copied().collect::<HashSet<_>>().len() != selected.len()
             {
@@ -302,7 +305,10 @@ impl Core {
         })
     }
 }
-fn detect_duplicates(inner: &super::core::Inner, pending: &mut PendingImport) -> AppResult<()> {
+pub(super) fn detect_duplicates(
+    inner: &super::core::Inner,
+    pending: &mut PendingImport,
+) -> AppResult<()> {
     pending.duplicates.clear();
     let mut known = Vec::new();
     for r in inner.vault.references() {

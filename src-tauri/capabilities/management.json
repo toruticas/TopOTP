@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "panel",
-  "description": "Only the local TopOTP panel can access presentation commands",
-  "windows": ["panel"],
+  "identifier": "management",
+  "description": "Only the local TopOTP management window can access presentation commands",
+  "windows": ["management"],
   "platforms": ["macOS"],
   "permissions": [
     "allow-vault-status",
@@ -24,6 +24,8 @@
     "allow-cancel-import",
     "allow-export-accounts",
     "core:event:allow-listen",
-    "core:event:allow-unlisten"
+    "core:event:allow-unlisten",
+    "allow-management-ready",
+    "allow-pending-preview"
   ]
 }

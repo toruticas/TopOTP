@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onBeforeUnmount, ref } from 'vue';
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onBeforeUnmount,
+  ref,
+  watch,
+} from 'vue';
+import packageInfo from '../../package.json';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   api,
@@ -10,6 +18,7 @@ import {
   type ImportPreview,
   type VaultStatus,
   type TransferProgress,
+  type ManagementRequest,
 } from '../lib/ipc';
 import AccountForm from '../features/accounts/AccountForm.vue';
 import ImportForm from '../features/transfer/ImportForm.vue';
@@ -18,14 +27,19 @@ const status = ref<VaultStatus>({ phase: 'locked', epoch: '0' });
 const accounts = ref<AccountSummary[]>([]);
 const codes = ref<Code[]>([]);
 const search = ref('');
-const view = ref<'list' | 'account' | 'import' | 'export'>('list');
+const view = ref<
+  'list' | 'account' | 'import' | 'export' | 'general' | 'migration'
+>('list');
 const editing = ref<AccountSummary | null>(null);
 const preview = ref<ImportPreview | null>(null);
 const busy = ref(false);
+const scanning = ref(false);
 const error = ref('');
 const notice = ref('');
 const progress = ref('');
 const visible = ref(true);
+let pendingRoute: ManagementRequest | null = null;
+let routing = false;
 const restoring = ref(false);
 const panelElement = ref<HTMLElement>();
 const accountForm = ref<InstanceType<typeof AccountForm>>();
@@ -71,6 +85,7 @@ function clear() {
   error.value = '';
   notice.value = '';
   progress.value = '';
+  scanning.value = false;
 }
 function canResume() {
   return (
@@ -141,6 +156,67 @@ async function showPresentation() {
     restoring.value = false;
   }
 }
+async function receiveRoute() {
+  const request = await api.managementReady();
+  if (request) pendingRoute = request;
+  await applyPendingRoute();
+}
+async function applyPendingRoute() {
+  if (
+    routing ||
+    busy.value ||
+    !pendingRoute ||
+    !visible.value ||
+    restoring.value ||
+    status.value.phase !== 'unlocked'
+  )
+    return;
+  const request = pendingRoute;
+  pendingRoute = null;
+  if (request.epoch !== status.value.epoch || status.value.phase !== 'unlocked')
+    return;
+  routing = true;
+  accountForm.value?.clearSensitive();
+  importForm.value?.clearSensitive();
+  exportForm.value?.clearSensitive();
+  const ticket = generation;
+  try {
+    if (
+      request.route === 'migration' ||
+      (status.value.legacyMigrationRequired && request.route !== 'import')
+    )
+      view.value = 'migration';
+    else if (request.route === 'general') view.value = 'general';
+    else if (request.route === 'accounts') view.value = 'list';
+    else if (request.route === 'new-account') edit(null);
+    else if (request.route === 'export') view.value = 'export';
+    else if (request.route === 'import') await beginImport();
+    else if (request.route === 'qr-review') {
+      const value = await api.pendingPreview(request.epoch);
+      if (ticket === generation && value && visible.value) {
+        preview.value = value;
+        view.value = 'import';
+      }
+    }
+  } catch (e) {
+    if (ticket === generation) error.value = errorMessage(e);
+  } finally {
+    routing = false;
+    if (pendingRoute) void applyPendingRoute();
+  }
+}
+watch(
+  [
+    busy,
+    visible,
+    restoring,
+    () => status.value.phase,
+    () => status.value.epoch,
+  ],
+  () => {
+    void applyPendingRoute();
+  },
+);
 async function refresh(ticket = generation) {
   const epoch = status.value.epoch;
   const [list, values] = await Promise.all([api.list(epoch), api.codes(epoch)]);
@@ -159,6 +235,8 @@ async function sync() {
   if (ticket !== generation || !visible.value) return;
   if (value.epoch !== status.value.epoch || value.phase === 'locked') clear();
   status.value = value;
+  if (value.legacyMigrationRequired && view.value === 'list')
+    view.value = 'migration';
   if (value.phase === 'unlocked') await refresh();
 }
 async function action(work: (current: () => boolean) => Promise<void>) {
@@ -195,6 +273,7 @@ async function unlock() {
       const value = await api.unlock();
       if (current()) {
         status.value = value;
+        if (value.legacyMigrationRequired) view.value = 'migration';
         await refresh();
       }
     } catch (e) {
@@ -317,9 +396,12 @@ async function commit(ids: string[], acknowledge: boolean) {
     await api.commit(status.value.epoch, preview.value!.id, ids, acknowledge);
     if (current()) {
       preview.value = null;
-      view.value = 'list';
+      const value = await api.status();
+      if (!current()) return;
+      status.value = value;
+      view.value = value.legacyMigrationRequired ? 'migration' : 'list';
       await refresh();
-      notice.value = 'Contas importadas.';
+      if (current()) notice.value = 'Contas importadas.';
     }
   });
 }
@@ -327,7 +409,7 @@ async function cancelImport() {
   const epoch = status.value.epoch;
   generation++;
   preview.value = null;
-  view.value = 'list';
+  view.value = status.value.legacyMigrationRequired ? 'migration' : 'list';
   busy.value = false;
   try {
     await api.cancel(epoch);
@@ -385,9 +467,12 @@ async function tick() {
       clear();
       status.value = s;
       if (s.phase === 'unlocked') await refresh();
-    } else if (s.phase === 'unlocked' && view.value === 'list') {
-      const values = await api.codes(s.epoch);
-      if (ticket === generation && visible.value) codes.value = values;
+    } else {
+      status.value = s;
+      if (s.phase === 'unlocked' && view.value === 'list') {
+        const values = await api.codes(s.epoch);
+        if (ticket === generation && visible.value) codes.value = values;
+      }
     }
   } catch {
     clear();
@@ -416,8 +501,13 @@ onMounted(async () => {
   for (const [name, callback] of [
     [
       'vault-changed',
-      () => {
-        clear();
+      (event?: { payload?: VaultStatus | undefined }) => {
+        if (!event?.payload || event.payload.phase === 'locked') {
+          clear();
+          status.value.phase = 'locked';
+        } else if (event.payload.epoch !== status.value.epoch) {
+          clear();
+        }
         void sync().catch(() => {
           clear();
           status.value.phase = 'locked';
@@ -425,14 +515,43 @@ onMounted(async () => {
       },
     ],
     ['panel-hidden', hidePresentation],
-    ['panel-shown', () => void showPresentation()],
+    [
+      'panel-shown',
+      () =>
+        void showPresentation()
+          .then(receiveRoute)
+          .catch(() => {}),
+    ],
+    [
+      'scan-started',
+      () => {
+        clear();
+        scanning.value = true;
+      },
+    ],
+    [
+      'scan-finished',
+      () => {
+        scanning.value = false;
+      },
+    ],
+    ['management-route', () => void receiveRoute().catch(() => {})],
+    [
+      'management-closed',
+      () => {
+        pendingRoute = null;
+        clear();
+        visible.value = false;
+      },
+    ],
   ] as const) {
-    const off = await listen(name, callback);
+    const off = await listen<VaultStatus | undefined>(name, callback);
     if (disposed) off();
     else unlisten.push(off);
   }
   try {
     await sync();
+    await receiveRoute();
   } catch {
     error.value = 'Abra o aplicativo TopOTP para acessar o cofre.';
   }
@@ -449,7 +568,7 @@ onBeforeUnmount(() => {
   <main
     v-show="visible && !restoring"
     ref="panelElement"
-    class="panel"
+    class="panel management"
     @pointerdown="interact"
     @keydown="interact"
     @keydown.esc.prevent="api.hide()"
@@ -468,6 +587,34 @@ onBeforeUnmount(() => {
         Bloquear</button
       ><span v-else class="hint">2FA no seu Mac</span>
     </header>
+    <nav
+      v-if="
+        status.phase === 'unlocked' &&
+        !scanning &&
+        !status.legacyMigrationRequired
+      "
+      aria-label="Gerenciamento"
+    >
+      <button
+        :disabled="busy"
+        :aria-current="view === 'general' ? 'page' : undefined"
+        @click="view = 'general'"
+      >
+        Geral
+      </button>
+      <button
+        :disabled="busy"
+        :aria-current="view === 'list' ? 'page' : undefined"
+        @click="view = 'list'"
+      >
+        Contas
+      </button>
+      <button :disabled="busy" @click="edit(null)">Nova entrada</button>
+      <button :disabled="busy" @click="beginImport">Importar</button>
+      <button :disabled="busy || !accounts.length" @click="view = 'export'">
+        Exportar
+      </button>
+    </nav>
     <p v-if="error" class="message error" role="alert">{{ error }}</p>
     <p v-if="notice" class="message" role="status">{{ notice }}</p>
     <section
@@ -487,6 +634,59 @@ onBeforeUnmount(() => {
       </button>
       <p class="hint">Touch ID ou senha do macOS</p>
       <p class="privacy">Chaves guardadas no Keychain. Sempre local.</p>
+    </section>
+    <section v-else-if="scanning" class="empty" role="status">
+      <h2>Escaneando QR Code</h2>
+      <p>Selecione uma área da tela. Escape cancela a seleção.</p>
+    </section>
+    <section v-else-if="view === 'migration'" class="settings">
+      <h2>Traga suas contas para esta versão</h2>
+      <p>
+        Seu cofre anterior está preservado. Importe o backup criptografado
+        exportado pelo TopOTP estável para continuar usando suas contas aqui.
+      </p>
+      <ol>
+        <li>
+          Na versão estável, exporte todas as contas em um backup com senha.
+        </li>
+        <li>
+          Escolha esse arquivo aqui e digite a senha somente no aplicativo.
+        </li>
+        <li>Revise e selecione todas as contas antes de confirmar.</li>
+      </ol>
+      <p>
+        Para contas HOTP, use o backup mais recente e não gere novos códigos na
+        versão anterior após exportar: o próximo contador vem desse arquivo.
+      </p>
+      <button class="primary" :disabled="busy" @click="beginImport">
+        Importar backup criptografado
+      </button>
+      <p class="hint">
+        A importação não apaga o cofre anterior. Após conferir suas contas,
+        mantenha o backup em um local seguro.
+      </p>
+    </section>
+    <section v-else-if="view === 'general'" class="settings">
+      <h2>Configurações</h2>
+      <p>TopOTP {{ packageInfo.version }}</p>
+      <dl>
+        <dt>Segurança</dt>
+        <dd>Touch ID ou senha do macOS; credenciais no Keychain.</dd>
+        <dt>Bloqueio automático</dt>
+        <dd>
+          Após 30 s com todas as telas ocultas, 120 s sem interação ou 5 minutos
+          de sessão.
+        </dd>
+        <dt>Privacidade</dt>
+        <dd>
+          Operação local e offline. A captura de QR precisa da permissão de
+          gravação da tela do macOS.
+        </dd>
+      </dl>
+      <p>
+        Use Contas para organizar suas entradas e Importar/Exportar para
+        transferir backups do Authenticator.
+      </p>
     </section>
     <template v-else-if="view === 'list'">
       <label class="search"
@@ -580,10 +780,7 @@ onBeforeUnmount(() => {
       </article>
       <footer>
         <button v-if="accounts.length" :disabled="busy" @click="edit(null)">
-          + Conta</button
-        ><button :disabled="busy" @click="beginImport">Importar</button
-        ><button :disabled="busy || !accounts.length" @click="view = 'export'">
-          Exportar
+          + Conta
         </button>
       </footer>
     </template>

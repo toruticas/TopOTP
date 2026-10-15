@@ -17,19 +17,31 @@ assert info["CFBundleShortVersionString"] == version
 assert info["CFBundleVersion"] == config["bundle"]["macOS"].get("bundleVersion", version)
 binary = app / "Contents/MacOS" / info["CFBundleExecutable"]
 data = binary.read_bytes()
-for marker in [b"WDIO_WEBDRIVER_PORT", b"wdio-webdriver", b"synthetic-export-password", b"synthetic-import-password", b"imported-numeric-kind", b"topotp-synthetic-", b"import-source.json", b"tests/compatibility/reference-roundtrip.mjs"]:
+for marker in [b"WDIO_WEBDRIVER_PORT", b"wdio-webdriver", b"synthetic-export-password", b"synthetic-import-password", b"imported-numeric-kind", b"topotp-synthetic-", b"import-source.json", b"tests/compatibility/reference-roundtrip.mjs", b"native-probe.json", b"accentInsensitiveResults", b"syntheticOnly", b"TopOTP%20Teste", b"com.rafaelmariano.topotp.native-smoke"]:
     assert marker not in data, f"Test marker in production binary: {marker!r}"
 assert not any("chromium" in p.name.lower() or "electron" in p.name.lower() or p.name == "node" for p in app.rglob("*"))
 subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True, capture_output=True)
 signature = subprocess.run(["codesign", "-dvv", str(app)], check=True, capture_output=True, text=True)
-assert "Signature=adhoc" in signature.stderr
+adhoc = "Signature=adhoc" in signature.stderr
+requirements = subprocess.run(["codesign", "--display", "--requirements", "-", str(app)], check=True, capture_output=True, text=True)
+requirement = (requirements.stdout + requirements.stderr).strip()
+if not adhoc:
+    assert "Authority=" in signature.stderr
+    assert "certificate" in requirement and "cdhash H" not in requirement
 architecture = subprocess.check_output(["lipo", "-archs", str(binary)], text=True).strip()
-capability = json.loads(Path("src-tauri/capabilities/panel.json").read_text())
-assert capability["windows"] == ["panel"]
+capability = json.loads(Path("src-tauri/capabilities/management.json").read_text())
+assert capability["identifier"] == "management"
+assert capability["windows"] == ["management"]
+assert config["app"]["security"]["capabilities"] == ["management"]
+assert len(config["app"]["windows"]) == 1
+window = config["app"]["windows"][0]
+assert window["label"] == "management" and window["decorations"] and window["resizable"]
+assert not window["devtools"] and not window["create"] and not window["visible"]
 assert not capability.get("remote")
 assert all(p.startswith("allow-") or p in ["core:event:allow-listen", "core:event:allow-unlisten"] for p in capability["permissions"])
-report = {"bundle": str(app), "version": version, "bundleVersion": info["CFBundleVersion"], "architecture": architecture, "minimumMacOS": info["LSMinimumSystemVersion"], "adhocSignatureVerified": True, "testPluginMarkersAbsent": True, "embeddedNodeChromiumAbsent": True, "capabilityReviewed": True, "nativeAuthenticationManual": "pending", "notarized": False}
-folder = Path(".artifacts"); folder.mkdir(exist_ok=True)
+report = {"bundle": str(app), "version": version, "bundleVersion": info["CFBundleVersion"], "architecture": architecture, "minimumMacOS": info["LSMinimumSystemVersion"], "signatureVerified": True, "signatureKind": "adhoc" if adhoc else "certificate", "designatedRequirement": requirement, "identityContinuityRequiresUpgradeTest": True, "testPluginMarkersAbsent": True, "embeddedNodeChromiumAbsent": True, "capabilityReviewed": True, "nativeAuthenticationManual": "pending", "notarized": False}
+folder = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(".artifacts")
+folder.mkdir(parents=True, exist_ok=True)
 path = folder / f"release-inspection-{architecture}.json"
 path.write_text(json.dumps(report, indent=2) + "\n"); path.chmod(0o600)
 print(json.dumps(report, indent=2))

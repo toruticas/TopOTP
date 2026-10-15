@@ -1,46 +1,35 @@
 pub mod application;
-#[cfg(all(feature = "e2e", not(debug_assertions)))]
-compile_error!("The synthetic e2e feature is forbidden in release builds");
+#[cfg(all(
+    any(feature = "e2e", feature = "native-ui-probe", feature = "native-smoke"),
+    not(debug_assertions)
+))]
+compile_error!("Synthetic test features are forbidden in release builds");
+#[cfg(all(feature = "e2e", feature = "native-smoke"))]
+compile_error!("Native smoke and E2E adapters must not be combined");
 pub mod bindings;
 pub mod commands;
 pub mod compatibility;
 pub mod domain;
 #[cfg(feature = "e2e")]
 mod e2e;
+#[cfg(feature = "native-smoke")]
+mod native_smoke;
 pub mod platform;
+pub mod shell;
 
 use application::core::Core;
 use std::sync::Arc;
 use tauri::{
     Emitter, Manager,
     menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
-fn hidden(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("panel") {
-        app.state::<Arc<Core>>().visibility(false);
-        let _ = window.emit("panel-hidden", ());
-        let _ = window.hide();
-    }
-}
-fn show(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("panel") {
-        if let Some(tray) = app.tray_by_id("topotp") {
-            position(&window, &tray);
-        }
-        app.state::<Arc<Core>>().visibility(true);
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = window.emit("panel-shown", ());
-    }
-}
-fn position(window: &tauri::WebviewWindow, tray: &TrayIcon) {
-    let _ = platform::macos::panel::position(window, tray);
-}
 pub fn run() {
     let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| show(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            shell::activate(app)
+        }))
         .plugin(tauri_plugin_dialog::init());
     #[cfg(feature = "e2e")]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
@@ -51,6 +40,10 @@ pub fn run() {
                 return Err("e2e requires tauri.e2e.conf.json".into());
             }
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            #[cfg(feature = "native-smoke")]
+            if app.config().identifier != "com.rafaelmariano.topotp.native-smoke" {
+                return Err("native-smoke requires tauri.native-smoke.conf.json".into());
+            }
             #[cfg(not(feature = "e2e"))]
             let core = Arc::new(Core::new(
                 Box::new(platform::macos::keychain::Keychain::new(
@@ -58,57 +51,64 @@ pub fn run() {
                 )?),
                 application::vault::DiskIndex::new(app.path().app_data_dir()?.join(
                     if cfg!(debug_assertions) {
-                        "dev"
+                        "dev-signed-v1"
                     } else {
-                        "vault"
+                        "vault-signed-v1"
                     },
                 ))?,
                 Arc::new(platform::macos::auth::NativeAuthenticator::new()),
                 Arc::new(platform::macos::clipboard::NativeClipboard),
                 Arc::new(application::core::SystemClock::default()),
             )?);
+            #[cfg(not(any(feature = "e2e", feature = "native-smoke")))]
+            {
+                let root = app.path().app_data_dir()?;
+                let (legacy, signed) = if cfg!(debug_assertions) {
+                    ("dev", "dev-signed-v1")
+                } else {
+                    ("vault", "vault-signed-v1")
+                };
+                if root.join(legacy).join("manifest.json").is_file()
+                    && !root.join(signed).join("manifest.json").exists()
+                {
+                    core.require_legacy_migration();
+                }
+            }
             #[cfg(feature = "e2e")]
             let core = Arc::new(e2e::core()?);
             app.manage(core.clone());
-            tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
-                .on_navigation(|url| {
-                    url.scheme() == "tauri" && url.host_str() == Some("localhost")
-                        || cfg!(debug_assertions)
-                            && url.scheme() == "http"
-                            && url.host_str() == Some("127.0.0.1")
-                            && url.port() == Some(1420)
-                })
-                .build()?;
-            core.visibility(app.config().app.windows[0].visible);
+            app.manage(Arc::new(shell::Shell::new(core.clone())));
+            shell::setup(app.handle());
+            #[cfg(feature = "e2e")]
+            {
+                let window = shell::ensure_management(app.handle())?;
+                window.show()?;
+                shell::management_visibility(app.handle(), true);
+            }
             platform::macos::events::observe(app.handle().clone(), core.clone());
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(500));
-                    if core.tick() {
-                        let _ = handle.emit("vault-changed", ());
-                    }
+                    core.tick();
+                    shell::poll(&handle);
                 }
             });
             let open = MenuItem::with_id(app, "open", "Abrir", true, None::<&str>)?;
             let lock = MenuItem::with_id(app, "lock", "Bloquear", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &lock, &quit])?;
-            TrayIconBuilder::with_id("topotp")
+            let _tray = TrayIconBuilder::with_id("topotp")
                 .icon(tauri::image::Image::from_bytes(include_bytes!(
                     "../icons/tray/20x20.png"
                 ))?)
                 .icon_as_template(true)
-                .tooltip("TopOTP")
+                .tooltip(app.config().product_name.as_deref().unwrap_or("TopOTP"))
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "open" => show(app),
-                    "lock" => {
-                        app.state::<Arc<Core>>().lock();
-                        let _ = app.emit("vault-changed", ());
-                        hidden(app);
-                    }
+                    "open" => shell::activate(app),
+                    "lock" => shell::lock(app),
                     "quit" => {
                         app.state::<Arc<Core>>().lock();
                         app.exit(0);
@@ -125,31 +125,44 @@ pub fn run() {
                         }
                     ) {
                         let app = tray.app_handle();
-                        if app
-                            .get_webview_window("panel")
-                            .is_some_and(|w| w.is_visible().unwrap_or(false))
-                        {
-                            hidden(app);
-                        } else {
-                            show(app);
-                        }
+                        shell::activate(app);
                     }
                 })
                 .build(app)?;
+            #[cfg(feature = "native-smoke")]
+            _tray.set_title(Some("Teste"))?;
             Ok(())
         })
-        .on_window_event(|window, event| match event {
-            tauri::WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close();
-                hidden(window.app_handle());
+        .on_window_event(|window, event| {
+            if window.label() != "management" {
+                return;
             }
-            tauri::WindowEvent::Focused(false) if !window.state::<Arc<Core>>().has_dialog() => {
-                hidden(window.app_handle())
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    shell::hide_management(window.app_handle());
+                }
+                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(true) => {
+                    let visible = window.is_visible().unwrap_or(false)
+                        && !window.is_minimized().unwrap_or(false);
+                    if shell::management_visibility(window.app_handle(), visible) {
+                        let _ = window.emit(
+                            if visible {
+                                "panel-shown"
+                            } else {
+                                "panel-hidden"
+                            },
+                            (),
+                        );
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::vault_status,
+            commands::management_ready,
+            commands::pending_preview,
             commands::unlock_vault,
             commands::lock_vault,
             commands::hide_panel,
@@ -174,7 +187,7 @@ pub fn run() {
         tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. } => {
             app.state::<Arc<Core>>().lock()
         }
-        tauri::RunEvent::Reopen { .. } => show(app),
+        tauri::RunEvent::Reopen { .. } => shell::activate(app),
         _ => {}
     });
 }

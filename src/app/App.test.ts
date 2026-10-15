@@ -6,7 +6,9 @@ import ImportForm from '../features/transfer/ImportForm.vue';
 import ExportForm from '../features/transfer/ExportForm.vue';
 import { api } from '../lib/ipc';
 import type { AccountSummary, VaultStatus } from '../lib/ipc';
-const listeners = vi.hoisted(() => new Map<string, () => void>());
+const listeners = vi.hoisted(
+  () => new Map<string, (event?: { payload?: unknown }) => void>(),
+);
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async (name: string, callback: () => void) => {
     listeners.set(name, callback);
@@ -43,6 +45,8 @@ beforeEach(() => {
   vi.mocked(api.status).mockResolvedValue({ phase: 'locked', epoch: '1' });
   vi.mocked(api.list).mockResolvedValue([account]);
   vi.mocked(api.codes).mockResolvedValue([]);
+  vi.mocked(api.managementReady).mockResolvedValue(null);
+  vi.mocked(api.pendingPreview).mockResolvedValue(null);
 });
 afterEach(() => {
   wrapper?.unmount();
@@ -50,6 +54,175 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('vault presentation boundaries', () => {
+  it('offers backup migration instead of an empty vault and resumes it after cancellation', async () => {
+    const migration: VaultStatus = {
+      phase: 'unlocked',
+      epoch: '2',
+      legacyMigrationRequired: true,
+    };
+    vi.mocked(api.status).mockResolvedValue(migration);
+    vi.mocked(api.list).mockResolvedValue([]);
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'migration',
+      epoch: '2',
+    });
+    vi.mocked(api.import).mockRejectedValueOnce({ code: 'Cancelled' });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe('Traga suas contas para esta versão');
+    expect(wrapper.text()).toContain(
+      'não gere novos códigos na versão anterior',
+    );
+    expect(wrapper.text()).not.toContain('Seu primeiro código');
+    expect(wrapper.find('nav').exists()).toBe(false);
+    await wrapper.get('button.primary').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe('Traga suas contas para esta versão');
+    vi.mocked(api.import).mockResolvedValue({
+      origin: 'backup',
+      id: 'migration-preview',
+      keys: [],
+      rows: [{ sourceId: 'source', account, issue: null }],
+    });
+    await wrapper.get('button.primary').trigger('click');
+    await flushPromises();
+    expect(wrapper.findComponent(ImportForm).exists()).toBe(true);
+    wrapper.findComponent(ImportForm).vm.$emit('cancel');
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe('Traga suas contas para esta versão');
+    expect(api.unlock).not.toHaveBeenCalled();
+  });
+  it('applies the latest native route after an earlier route finishes loading', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    let finish!: (
+      value: Awaited<ReturnType<typeof api.pendingPreview>>,
+    ) => void;
+    vi.mocked(api.pendingPreview).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'qr-review',
+      epoch: '2',
+    });
+    listeners.get('management-route')?.();
+    await flushPromises();
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'general',
+      epoch: '2',
+    });
+    listeners.get('management-route')?.();
+    await flushPromises();
+    finish({
+      origin: 'qr',
+      id: 'earlier',
+      keys: [],
+      rows: [{ sourceId: 'source', account, issue: null }],
+    });
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe('Configurações');
+  });
+  it('keeps an early native route until initial authorization has loaded', async () => {
+    let finish!: (value: VaultStatus) => void;
+    vi.mocked(api.status).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'general',
+      epoch: '2',
+    });
+    listeners.get('management-route')?.();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('Configurações');
+    finish({ phase: 'unlocked', epoch: '2' });
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe('Configurações');
+    expect(wrapper.text()).toContain('TopOTP 0.0.1-beta.1');
+    listeners.get('vault-changed')?.({
+      payload: { phase: 'unlocked', epoch: '2' },
+    });
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe('Configurações');
+    expect(api.unlock).not.toHaveBeenCalled();
+  });
+  it('routes to a pending QR review using metadata only', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'qr-review',
+      epoch: '2',
+    });
+    vi.mocked(api.pendingPreview).mockResolvedValue({
+      origin: 'qr',
+      id: 'synthetic-preview',
+      keys: [],
+      rows: [{ sourceId: 'source', account, issue: null }],
+    });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    expect(api.pendingPreview).toHaveBeenCalledWith('2');
+    expect(wrapper.findComponent(ImportForm).exists()).toBe(true);
+    expect(wrapper.find('input[type=password]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Revisar conta');
+    expect(wrapper.find('img[src="x"]').exists()).toBe(false);
+    await wrapper.get('button.primary').trigger('click');
+    await flushPromises();
+    expect(api.commit).toHaveBeenCalledWith(
+      '2',
+      'synthetic-preview',
+      ['synthetic'],
+      true,
+    );
+  });
+  it('discards a QR response after revocation and clears drafts when closed', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Nova entrada')!
+      .trigger('click');
+    await wrapper.get('input[type=password]').setValue('SYNTHETICSEED');
+    listeners.get('management-closed')?.();
+    await flushPromises();
+    expect(wrapper.findComponent(AccountForm).exists()).toBe(false);
+    listeners.get('panel-shown')?.();
+    await flushPromises();
+    let finish!: (
+      value: Awaited<ReturnType<typeof api.pendingPreview>>,
+    ) => void;
+    vi.mocked(api.pendingPreview).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'qr-review',
+      epoch: '2',
+    });
+    listeners.get('management-route')?.();
+    await flushPromises();
+    vi.mocked(api.status).mockResolvedValue({ phase: 'locked', epoch: '3' });
+    listeners.get('vault-changed')?.({
+      payload: { phase: 'locked', epoch: '3' },
+    });
+    finish({
+      origin: 'qr',
+      id: 'late',
+      keys: [],
+      rows: [{ sourceId: 'source', account, issue: null }],
+    });
+    await flushPromises();
+    expect(wrapper.findComponent(ImportForm).exists()).toBe(false);
+    expect(wrapper.text()).not.toContain(account.account);
+    expect(wrapper.text()).toContain('Desbloquear');
+  });
   it('starts locked without loading accounts or rendering credentials', async () => {
     wrapper = mount(App, { attachTo: document.body });
     await flushPromises();

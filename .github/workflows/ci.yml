@@ -28,6 +28,8 @@ jobs:
   bundle:
     needs: verify
     runs-on: macos-15
+    env:
+      TOPOTP_ADHOC_BUILD: '1'
     strategy:
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]

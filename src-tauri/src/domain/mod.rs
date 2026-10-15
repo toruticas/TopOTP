@@ -16,6 +16,10 @@ pub enum AppError {
     UnsupportedFormat,
     #[error("Armazenamento seguro indisponível")]
     StorageUnavailable,
+    #[error(
+        "Esta versão não tem acesso autorizado ao Keychain. Atualize a identidade do cofre pela migração; nenhuma senha será solicitada automaticamente"
+    )]
+    KeychainAccessDenied,
     #[error("Conta não encontrada")]
     NotFound,
     #[error("Contador esgotado")]
@@ -26,6 +30,18 @@ pub enum AppError {
     LimitExceeded,
     #[error("Dados foram alterados; revise novamente")]
     Conflict,
+    #[error(
+        "Permita a gravação da tela nos Ajustes do Sistema para escanear um QR; pode ser necessário reabrir o app"
+    )]
+    ScreenCaptureDenied,
+    #[error("Não foi possível capturar a região escolhida")]
+    CaptureUnavailable,
+    #[error("Nenhum QR Code encontrado na região escolhida")]
+    NoQrCode,
+    #[error("O QR Code não contém uma conta OTP válida")]
+    InvalidQrCode,
+    #[error("A captura excedeu o tempo disponível; tente novamente")]
+    CaptureTimedOut,
 }
 
 pub type AppResult<T> = Result<T, AppError>;

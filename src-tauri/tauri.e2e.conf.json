@@ -1,18 +1,22 @@
 {
   "identifier": "com.rafaelmariano.topotp.e2e",
-  "bundle": { "active": false },
+  "bundle": {
+    "active": false
+  },
   "app": {
     "windows": [
       {
-        "label": "panel",
-        "title": "TopOTP · testes sintéticos",
-        "width": 380,
-        "height": 480,
+        "label": "management",
+        "title": "TopOTP \u00b7 testes sint\u00e9ticos",
+        "width": 720,
+        "height": 620,
         "visible": true,
         "create": false,
-        "resizable": false,
-        "decorations": false,
-        "devtools": false
+        "resizable": true,
+        "decorations": true,
+        "devtools": false,
+        "minWidth": 540,
+        "minHeight": 480
       }
     ]
   }

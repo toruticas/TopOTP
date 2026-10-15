@@ -1,12 +1,12 @@
 # Desenvolvimento
 
-TopOTP usa Vue 3/TypeScript/Vite no WebKit do macOS e Tauri 2/Rust no core. Não há backend remoto nem Chromium/Node no aplicativo empacotado.
+TopOTP usa AppKit no acesso rápido, Vue 3/TypeScript/Vite no WebKit para gerenciamento e Tauri 2/Rust no core. Não há backend remoto nem Chromium/Node no aplicativo empacotado.
 
 ## Pré-requisitos
 
 - macOS, Xcode Command Line Tools/SDK instalado com `xcode-select --install`.
 - Node **24.21.0**, npm **11.19.0**, Rust **1.99.0**. `.nvmrc`, `engines`, `rust-toolchain.toml` e ambos os lockfiles fixam o ambiente.
-- Nenhuma conta Apple, certificado Developer ID ou perfil de provisionamento para build local. A assinatura ad hoc é feita pelo bundler.
+- Nenhuma conta Apple, certificado Developer ID ou perfil de provisionamento para build local. O wrapper cria/reutiliza um certificado local persistente no Keychain.
 
 Nesta máquina foi usado macOS 27.0.1/arm64 com CLT; macOS 13 é o deployment target declarado, ainda sem execução nesse sistema.
 
@@ -36,6 +36,8 @@ rtk proxy npm run tauri:build
 - `src-tauri/src/domain`: conta/segredo e OTP, sem dependência de Tauri/frameworks Apple.
 - `application`: sessão, coordenador, cofre, commits e transferências; adaptadores injetados pelas interfaces de `ports`/`vault`.
 - `platform/macos`: Security, LocalAuthentication, clipboard e observadores nativos.
+- `platform/macos/quick_access`: popover, busca, linhas e menu AppKit, confinados à thread principal. `shell.rs` coordena intenção, visibilidade agregada e rotas pendentes da janela `management`.
+- `platform/macos/scan`: seleção por monitor e captura regional; ScreenCaptureKit usa SCScreenshotManager em 14+ e um frame completo de SCStream em 13. `sourceRect` está em pontos; width/height de saída, em pixels. Vision lê apenas QR, fora da thread principal.
 - `compatibility`: URI e formato Authenticator v3; CBC/MD5 existem apenas no envelope de interoperabilidade.
 - `commands`: IPC específico, autorização da janela/origem e diálogos nativos.
 - `src/features`: formulários; `src/lib/ipc`: contratos/cliente; `src/app`: apresentação transitória e descarte de respostas antigas.
@@ -45,6 +47,10 @@ A suíte cobre RFC 4226/6238, mudanças de relógio, defaults/URIs, fixtures cru
 O build E2E vive em `.artifacts/e2e-target`, tem identificador `.e2e` e usa adaptadores sintéticos de autenticação, armazenamento, arquivo e clipboard. O domínio, IPC, commits e codecs são os reais. Não acessa o Keychain do usuário. A feature E2E é proibida em release por `compile_error!`; nenhum parâmetro de ambiente habilita mocks no build normal. Esses testes não comprovam biometria, observação de bloqueio do sistema ou VoiceOver.
 
 O harness escolhe o arquivo sintético copiando-o para `.artifacts/e2e/import-source.json`; somente o build E2E lê esse caminho fixo. Exportações de teste ficam no mesmo diretório. Não use arquivos pessoais nesses testes.
+
+`rtk proxy cargo run --manifest-path src-tauri/Cargo.toml --features native-ui-probe --bin quick-access-probe` executa o probe AppKit independente com dados sintéticos e encerra sozinho. Verifica ancoragem, teclado, busca com acentos, Mais, ocultação de códigos, Command-F e retomada/expiração com o relógio de apresentação ajustado no harness. O JSON fica em `.artifacts/native-quick-access/native-probe.json`; a captura de view é parcial e não comprova a composição visual do WindowServer. Não execute simultaneamente com outro teste GUI, pois foco é global. Essa feature também é proibida em release e o executável não abre Core/Keychain/LocalAuthentication.
+
+Testes unitários Vision criam imagens em memória via `qrcodegen`, somente dev-dependency. Leem TOTP/HOTP e Unicode usando o framework real, sem capturar a tela ou solicitar permissão. Testes do core cobrem revisão sem seed/URI, escolha única, duplicatas, falha de armazenamento e revogação; testes do capturador cobrem decisões de permissão e timeout/cancelamento/resultados revogados. Isso não substitui captura real, macOS 13 ou segundo monitor. O harness WKWebView dirige `management`, sem automatizar AppKit.
 
 O serviço Tauri requer WebdriverIO 9; versões de globals/webdriverio são unificadas por overrides para evitar instâncias de estado distintas. `basic-ftp` e `serialize-javascript` têm overrides corrigidos. O audit de dependências de produção está limpo. Ainda há alertas transitivos de desenvolvimento em `extract-zip`/`braces`, sem versão corrigida disponível na consulta; o provider embedded não baixa drivers/arquivos ZIP. Não habilite providers que baixem binários nem use arquivos de terceiros nesses componentes sem revisar os alertas.
 
@@ -56,9 +62,19 @@ rtk proxy npm run tauri:build -- --target aarch64-apple-darwin --ci
 rtk proxy npm run tauri:build -- --target x86_64-apple-darwin --ci
 ```
 
-O wrapper cria o `.app` ad hoc e empacota o `.dmg` por `hdiutil`, sem automação do Finder. O script DMG padrão do Tauri falhou nesta máquina; o empacotamento direto foi executado com sucesso. O CLI sinaliza depreciação de `hdiutil create` no macOS 27; permanece disponível e é compatível com os sistemas de desenvolvimento anteriores.
+O wrapper cria o `.app` com uma identidade local persistente e empacota o `.dmg` por `hdiutil`, sem automação do Finder. Na primeira preparação, o macOS pode exigir autorização para `codesign` usar a chave **TopOTP Local Signing**; digite a senha somente no diálogo do sistema. Isso não é autenticação do cofre OTP. Builds seguintes reutilizam o certificado; não recrie a identidade se o Keychain estiver indisponível. Para CI/artefatos ad hoc, use explicitamente `TOPOTP_ADHOC_BUILD=1`; esses artefatos não preservam confiança entre builds. O CLI sinaliza depreciação de `hdiutil create` no macOS 27; permanece disponível.
 
-Saídas: `src-tauri/target/<target>/release/bundle/{macos,dmg}`. Manifests também são separados: subdiretório `dev` para debug e `vault` para produção no diretório de dados do app, além dos serviços Keychain distintos. `--debug --bundles app` cria somente o `.app` de debug. `scripts/inspect-release.py <app>` verifica assinatura, arquitetura, deployment target e ausência de componentes de testes/Node/Chromium. CI em `.github/workflows/ci.yml` roda checks e gera bundles sem segredos Apple. Na [primeira execução](https://github.com/toruticas/TopOTP/actions/runs/38589241973), o job de checks passou; a inspeção de bundle falhou porque o helper chamava RTK, ausente no runner. O helper foi corrigido para chamar as ferramentas macOS diretamente e passou na validação local.
+Saídas: `src-tauri/target/<target>/release/bundle/{macos,dmg}`, ou o diretório `CARGO_TARGET_DIR` informado. Manifests novos são separados: `dev-signed-v1` para debug e `vault-signed-v1` para produção, com serviços Keychain próprios. `dev`/`vault` antigos permanecem preservados. `--debug --bundles app` cria somente o `.app` de debug. `scripts/inspect-release.py <app>` verifica assinatura, arquitetura, deployment target e ausência de componentes de testes/Node/Chromium, distinguindo ad hoc/certificado. CI roda checks e gera artefatos ad hoc sem chaves Apple ou locais persistentes.
+
+Para preservar o `.app` estável durante esta mudança, compile com `--no-bundle`, copie o binário para `.artifacts/native-quick-access/target/<target>/release/topotp` e execute `tauri bundle --target <target> --bundles app --ci` com `CARGO_TARGET_DIR` apontando para esse target isolado. Empacote com `scripts/package-dmg.py <app>`. O inspetor aceita um segundo argumento de diretório para guardar os relatórios junto desses artefatos. Não inicie um bundle de produção com o vault pessoal para testar scanner; use o probe/harness sintético e reserve os smoke tests nativos para verificação explícita. Não publique nova versão/tag automaticamente.
+
+Antes de instalar/abrir uma atualização sobre o cofre existente, execute `rtk proxy python3 scripts/verify-update-identity.py <app-atual> <candidato>`. Ele compara requisitos designados nos dois sentidos com `codesign`, sem abrir o Keychain. O estável restaurado passa; o candidato nativo retirado falha, apesar de ambos terem assinatura ad hoc válida. Falha bloqueia a instalação normal: não resolver por ACL irrestrita ou prompts repetidos no vault do usuário. Mesmo com preflight aprovado, testar atualização entre dois builds com itens sintéticos é necessário; o helper não atesta ACLs existentes nem substitui biometria real. O relato de regressão e rollback de 15/10/2026 está no guia de verificação nativa.
+
+A migração ad hoc→certificado é separada e foi escolhida explicitamente pelo usuário: exportar backup criptografado pela versão estável, instalar o candidato validado e importar pela UI em um cofre novo. Não tentar passar artificialmente no requisito antigo, modificar sua ACL ou usar seus seeds nos testes. O arquivo precisa conter todas as contas e os contadores atuais; não gerar HOTP no app anterior depois da exportação. O cofre antigo não sincroniza os incrementos da nova versão.
+
+`rtk proxy python3 scripts/keychain-update-probe.py` reproduz a recusa ad hoc e testa assinatura com identidade descartável, usando só Keychains de teste. `--local-identity` repete com o certificado efetivo do build. Ambos impedem UI nas operações de armazenamento, verificam leitura/atualização/rollback e negação ao identificador estrangeiro; não testam Touch ID. A identidade persistente é mantida, enquanto dados/Keychains temporários são removidos.
+
+Para o teste do shell completo com autenticação/Keychain reais, compile **somente debug** com `--features native-smoke --config src-tauri/tauri.native-smoke.conf.json`. O `.app` se chama TopOTP Teste Nativo, tem identifier e serviço próprios, e cria apenas duas contas públicas sintéticas após desbloqueio. Compile/bundle em artefatos isolados e assine com a identidade persistente. Não execute junto com E2E ou probe AppKit, pois foco/diálogos pertencem à sessão macOS. A feature é proibida em release.
 
 A versão atual é `0.0.1-beta.1`, com tag `v0.0.1-beta.1`; a estável `v0.0.1` será publicada após as validações mínimas. Alinhe `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` e `src-tauri/tauri.conf.json` ao versionar. `package-dmg.py` lê a versão do `Info.plist` do `.app`, e `inspect-release.py` confere a correspondência com os manifests. Publique os pacotes por arquitetura e `SHA256SUMS` como assets de um pré-release, associado ao commit da `main`; não versionar binários no Git. As notas de cada versão ficam em `docs/releases/`.
 

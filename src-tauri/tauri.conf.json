@@ -12,20 +12,22 @@
   "app": {
     "windows": [
       {
-        "label": "panel",
+        "label": "management",
         "title": "TopOTP",
-        "width": 380,
-        "height": 480,
+        "width": 720,
+        "height": 620,
         "visible": false,
-        "resizable": false,
-        "decorations": false,
+        "resizable": true,
+        "decorations": true,
         "skipTaskbar": true,
         "devtools": false,
-        "create": false
+        "create": false,
+        "minWidth": 540,
+        "minHeight": 480
       }
     ],
     "security": {
-      "capabilities": ["panel"],
+      "capabilities": ["management"],
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'",
       "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; base-uri 'none'; frame-src 'none'"
     }
