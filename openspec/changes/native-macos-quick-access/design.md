@@ -24,17 +24,25 @@ A mudança original permanece aberta para verificações manuais; não arquivá-
 
 ## Decisions
 
-### 1. Painel AppKit e menu secundário nativo
+### Ajustes de apresentação após o primeiro acesso
 
-Manter Tauri como ciclo de vida e host da janela de gerenciamento. Obter o `NSStatusItem` existente por `with_inner_tray_icon`, como já faz o posicionamento atual. Criar um `NSPopover` com `NSViewController`, lista rolável de linhas nativas, `NSSearchField` no topo e botão Mais no rodapé. O botão abre um `NSMenu` ancorado, com os comandos definidos na spec. Usar materiais semânticos, cores e fontes do sistema, respeitando contraste e transparência reduzida; o resultado acompanha a versão do macOS.
+Manter largura de 380 pontos e altura máxima de 480 pontos. A lista usa 60 pontos por conta; dimensionar o conteúdo pelos resultados sem reservar linhas vazias. Cabeçalho, mensagem, Mais e Configurações ocupam 192 pontos; a expansão acrescenta cinco ações de 28 pontos. A viewport disponível é de até 288 pontos com Mais recolhido e 148 expandido. Quando o conteúdo cabe, o painel cresce; no limite, somente a lista OTP rola, com as ações e Configurações sempre visíveis. O popover recebe o novo `contentSize` antes de redimensionar a view, inclusive na reabertura. Busca sem resultados reduz a lista; apenas um cofre sem contas desativa o campo, com foco alternativo em Mais.
+
+Mais expande/recolhe um grupo de botões AppKit dentro da mesma view, com chevron e estado acessível de expansão. Configurações é um botão irmão do grupo, separado por uma linha e fixo como última opção, sem reticências. Bloquear usa um cadeado no cabeçalho, com tooltip/nome acessível e a mesma ação de revogação existente. O foco percorre somente as ações visíveis; recolher com foco em uma delas o devolve a Mais. Expansão e foco em ações/Configurações seguem o mesmo prazo de retomada da busca: somente memória, menos de 30 segundos e mesma sessão; reset descarta tudo. Nenhuma alteração no core, na autenticação ou no helper do Keychain é necessária.
+
+Referência: [NSPopover.contentSize](https://developer.apple.com/documentation/appkit/nspopover/contentsize).
+
+### 1. Painel AppKit e ações secundárias nativas
+
+Manter Tauri como ciclo de vida e host da janela de gerenciamento. Obter o `NSStatusItem` existente por `with_inner_tray_icon`, como já faz o posicionamento atual. Criar um `NSPopover` com `NSViewController`, lista rolável de linhas nativas, `NSSearchField` no topo, seção Mais expansível e Configurações no rodapé. Usar controles, cores e fontes do sistema, respeitando contraste e transparência reduzida; o resultado acompanha a versão do macOS.
 
 AppKit fica em `platform/macos/quick_access/`, com objetos retidos somente na thread principal. O domínio não conhece views. Dados para preencher a lista são metadados e códigos autorizados, obtidos fora da thread principal; alterações de views voltam à thread principal com validação da geração e da intenção de apresentação.
 
-O coordenador trata o menu Mais como parte da interação atual. Não aplicar o handler global `Focused(false)` da janela web ao popover nem fechar a árvore por abertura do submenu. Escape, clique externo real e toggle pelo ícone encerram a interação. Validar esse comportamento primeiro com dados sintéticos, inclusive foco da busca e navegação até Mais.
+Expandir Mais faz parte da interação atual, sem outra janela ou tracking de submenu. Não aplicar o handler global `Focused(false)` da janela web ao popover. Escape, clique externo real e toggle pelo ícone encerram a interação. Validar esse comportamento primeiro com dados sintéticos, inclusive foco da busca, das ações expandidas e de Configurações.
 
-Alternativas: `NSMenu` para a lista inteira reduz customização, mas views embutidas têm limitações documentadas de teclado e de atualização durante tracking; uma busca editável e uma lista com validade se encaixam melhor em um popover. Um painel web com novo CSS não entrega controles nativos. SwiftUI via ponte adicionaria outra camada de build/FFI sem necessidade inicial, pois `objc2-app-kit` já está disponível.
+Alternativas: `NSMenu` para a lista inteira reduz customização, mas views embutidas têm limitações de teclado e atualização durante tracking; uma busca editável e uma lista com validade se encaixam melhor em um popover. O menu lateral foi substituído pelo accordion por escolha do usuário, seguindo a referência Wi-Fi. SwiftUI via ponte adicionaria outra camada de build/FFI sem necessidade, pois `objc2-app-kit` já está disponível.
 
-Referências: [NSPopover](https://developer.apple.com/documentation/appkit/nspopover), [NSSearchField](https://developer.apple.com/documentation/appkit/nssearchfield?language=objc), [views em menus](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MenuList/Articles/ViewsInMenuItems.html), [materiais AppKit](https://developer.apple.com/documentation/AppKit/NSVisualEffectView/Material-swift.enum).
+Referências: [NSPopover](https://developer.apple.com/documentation/appkit/nspopover), [NSSearchField](https://developer.apple.com/documentation/appkit/nssearchfield?language=objc), [views em menus](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MenuList/Articles/ViewsInMenuItems.html).
 
 ### 2. Coordenador de ativação sem nova política de autenticação
 

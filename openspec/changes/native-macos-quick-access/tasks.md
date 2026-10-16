@@ -83,6 +83,20 @@
 - [x] 12.2 Cobrir cofre vazio, escolha explícita de cadastro/importação/QR, cancelamento e menu nativo com dados sintéticos; executar checks pertinentes sem alterar o helper fixo ou o ator de autenticação.
 - [x] 12.3 Atualizar documentação, gerar/inspecionar candidato com o mesmo helper e validar a atualização antes de instalar, preservando a versão confirmada pelo usuário.
 
+## 13. Ajustes visuais do painel nativo
+
+- [x] 13.1 Dimensionar painel/lista pela quantidade de resultados até 480 pontos, preservando ancoragem, rolagem e foco; desativar a busca somente quando o cofre estiver vazio.
+- [x] 13.2 Abrir Mais pela lateral disponível, mover Bloquear para o cabeçalho e retirar reticências das ações, exceto Configurações, com navegação e nomes acessíveis.
+- [x] 13.3 Testar estados vazio/uma/muitas contas, filtro sem resultados, reabertura e menu nas bordas com dados sintéticos; registrar capturas e checks nativos sem acessar o cofre pessoal.
+- [x] 13.4 Atualizar documentação e gerar/validar atualização local preservando o helper fixo, a identidade e os dados existentes.
+
+## 14. Mais expansível e Configurações no rodapé
+
+- [x] 14.1 Substituir o menu lateral por accordion AppKit no próprio painel, com indicador de expansão, ações acessíveis e Configurações fixa no final, fora do grupo e sem reticências.
+- [x] 14.2 Manter altura dinâmica até 480 pontos, rolagem exclusiva da lista e retomada da expansão/foco por menos de 30 segundos; descartar estado ao vencer o prazo ou mudar a sessão.
+- [x] 14.3 Cobrir expansão/recolhimento, rodapé, teclado, callbacks, estados vazio/uma/muitas contas e retomada no probe nativo sintético; executar testes/checks relevantes.
+- [x] 14.4 Atualizar guias e artefatos, gerar/inspecionar o build e validar atualização normal com helper fixo antes de instalar, preservando dados e rollback.
+
 ## Evidências em andamento
 
 - Base `530bf1c` e bundles anteriores preservados; hashes em `.artifacts/native-quick-access/baseline/baseline.json`.
@@ -112,3 +126,8 @@
 
 - Complemento 12: o primeiro acesso passa pelo painel nativo normal, sem detecção/flag/rota de migração; importação, cadastro e QR continuam escolhas explícitas. Passaram 76 testes Rust, um interop, 23 Vue e seis E2E com helper/Keychain reais e auth/clipboard/diálogos sintéticos. O probe AppKit exibiu a lista vazia e comprovou que Nova entrada, Importar e Escanear estão habilitados e disparam seus callbacks. Relatórios em `.artifacts/first-use/`. Helper fixo, adaptadores de Keychain/LocalAuthentication e dados pessoais não foram modificados.
 - Build do complemento 12 instalado em `/Applications/TopOTP.app`, SHA-256 `52117f90…`, após inspeção e preflight normal aprovados, com o mesmo helper `72e01246…` e sem migração. App/DMG e checksum em `.artifacts/first-use/`; versão confirmada anterior preservada no rollback. Manifestos/journals opacos permaneceram iguais durante a instalação. Recibo `installation.json`; testes nativos novos usaram somente dados sintéticos, sem reset ou leitura das contas pessoais.
+
+- Complemento 13 validado: 79 testes Rust e um interop aprovados; Clippy, rustfmt, Prettier e OpenSpec passaram. Probe AppKit confirmou altura compacta de uma conta/filtro, limite de 480 pontos com viewport de 332 e rolagem, abertura real de Mais dos dois lados, busca desativada somente no cofre vazio, foco/cursor/retomada, rótulos e cadeado no cabeçalho. Capturas sintéticas e relatório em `.artifacts/panel-polish/`. Reabertura que recuperava tamanho oculto e scroller calculado antes da extensão do documento foram corrigidos e cobertos pelo probe.
+- Novo teste de upgrade no login padrão com clientes sintéticos passou. Build arm64 `37942cdc…` instalado com inspeção/preflight normais aprovados e helper `72e01246…` preservado, sem migração. Versão anterior em `.artifacts/panel-polish/rollback/20261016-145546/TopOTP.app`; recibo `installation.json`, app/DMG/checksum no diretório de artefatos. Metadados dos três cofres preservados; nenhum seed pessoal lido ou reset acionado. Touch ID não foi repetido neste ciclo visual.
+
+- Complemento 14: Mais substituído por accordion no próprio popover; Configurações fica no rodapé como última ação, fora do grupo e sem reticências. O probe AppKit passou em 34 verificações, incluindo expansão/recolhimento, tamanhos reais, rolagem, callbacks de todas as ações, foco em ações/Configurações, retomada em 29 segundos e reset em 30 segundos/nova sessão. Capturas sintéticas em `.artifacts/panel-accordion/`. Passaram 78 testes Rust, um interop e Clippy com features nativas. rustfmt, Prettier e OpenSpec também passaram. Build arm64 `e80baa3e…` instalado após inspeção/preflight normal, DMG verificado e novo teste sintético de upgrade no login aprovados, com o mesmo helper `72e01246…`. Manifestos/journals opacos permaneceram iguais, sem leitura/reset do cofre pessoal; rollback e recibo em `.artifacts/panel-accordion/`. As pendências manuais 7.3/7.4 continuam abertas.

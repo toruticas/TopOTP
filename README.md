@@ -11,7 +11,7 @@ Versão de testes: **[v0.0.1-beta.1](https://github.com/toruticas/TopOTP/release
 - TOTP/HOTP SHA-1/256/512, 6–8 dígitos, períodos personalizados e contador persistido antes da exibição.
 - Cadastro manual/URI com revisão, edição, exclusão confirmada, busca, fixação, ordem e cópia nativa.
 - Importação/exportação pela interface: JSON claro e Authenticator v3 criptografado, múltiplas senhas, prévia/seleção e duplicatas preservadas.
-- Painel AppKit abaixo do ícone, busca nativa sem distinção de acentos e menu **Mais**. Clique bloqueado inicia uma autenticação; a lista aparece após aprovação.
+- Painel AppKit abaixo do ícone, altura ajustada às contas e rolagem interna no limite, busca nativa sem distinção de acentos e seção **Mais** expansível e Configurações fixa no rodapé. Cadeado ao lado do título para bloquear; busca desativada no cofre vazio. Clique bloqueado inicia uma autenticação; a lista aparece após aprovação.
 - Primeiro acesso pela mesma lista nativa vazia, com Nova entrada, Importar e Escanear disponíveis em Mais, sem etapa inicial obrigatória.
 - Retomada de busca, rolagem, seleção e foco em menos de 30 segundos, na mesma sessão. Configurações e formulários abrem em janela própria.
 - Leitura local de QR TOTP/HOTP de uma área da tela, com revisão e escolha de uma conta. Imagens e URIs reconhecidas não são enviadas à janela web.

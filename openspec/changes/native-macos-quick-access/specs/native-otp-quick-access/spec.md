@@ -22,6 +22,13 @@ Um cofre sem entradas MUST seguir o mesmo fluxo de autenticação/apresentação
 
 O app MUST iniciar bloqueado, com um único ícone na barra de menus e sem janela de gerenciamento aberta. Acionar o ícone com sessão válida MUST apresentar uma lista de controles nativos imediatamente abaixo dele, limitada à área disponível do monitor correspondente. A aparência MUST acompanhar o tema e as preferências de acessibilidade do sistema; Escape, novo clique no ícone ou clique fora MUST ocultar o painel. Fechá-lo MUST manter o aplicativo em execução.
 
+A altura MUST acompanhar a quantidade de linhas visíveis, inclusive após filtrar, até o máximo atual de 480 pontos. Poucas contas MUST NOT reservar a área de uma lista cheia. Acima do limite, somente a lista MUST rolar, mantendo cabeçalho, busca, Mais, ações expandidas e Configurações acessíveis. Redimensionar MUST preservar ancoragem, foco/cursor e o estado autorizado.
+
+#### Scenario: One account and an overflowing list
+
+- **WHEN** o painel apresenta uma conta e depois uma lista maior que a área disponível
+- **THEN** a primeira apresentação é compacta; a segunda para na altura máxima e usa rolagem interna sem mover o cabeçalho/rodapé para fora do painel
+
 #### Scenario: Startup without user interaction
 
 - **WHEN** o app é iniciado sem o usuário acionar seu ícone
@@ -74,6 +81,8 @@ A lista MUST apresentar serviço, conta e código TOTP com validade textual, res
 
 O painel MUST oferecer campo de busca nativo que filtre serviço e conta enquanto o usuário digita, sem diferenciar maiúsculas/minúsculas ou acentos. MUST permitir focar a busca por teclado, navegar nos resultados, copiar a seleção e acessar Mais com nomes e foco acessíveis. A busca MUST NOT persistir histórico. Busca sem resultado e cofre vazio MUST ter mensagens distintas e manter Mais disponível. Rótulos importados MUST ser tratados como texto.
 
+A busca MUST ficar desativada quando não há contas no cofre e voltar a ficar ativa após o primeiro cadastro/importação. Uma busca sem resultados em um cofre com contas MUST continuar editável. Com busca desativada, o foco MUST poder alcançar Mais e Bloquear.
+
 #### Scenario: Filter and activate from the keyboard
 
 - **WHEN** o usuário digita parte de um serviço ou conta e navega pelos resultados com o teclado
@@ -84,28 +93,42 @@ O painel MUST oferecer campo de busca nativo que filtre serviço e conta enquant
 - **WHEN** a busca não encontra uma conta, inclusive após importar rótulos contendo marcação
 - **THEN** o app informa ausência de resultados, preserva as ações do rodapé e não interpreta rótulos como conteúdo executável
 
-### Requirement: Native More menu
+### Requirement: Native More accordion and fixed Settings footer
 
-O rodapé MUST conter Mais, que abre um menu nativo ancorado ao controle com Bloquear, Nova entrada, Escanear QR da tela, Importar, Exportar, Configurações e Sair. Abrir e usar esse menu MUST NOT encerrar prematuramente a interação por perda de foco. Bloquear e Sair MUST funcionar independentemente da janela web. Sair MUST revogar a sessão e encerrar o processo; as ações de gerenciamento MUST direcionar à seção correspondente de uma única janela.
+Mais MUST expandir/recolher uma seção nativa dentro do mesmo painel, com as ações Nova entrada, Escanear QR da tela, Importar, Exportar e Sair. MUST iniciar recolhido, indicar o estado por chevron e expô-lo à acessibilidade. As ações MUST seguir a ordem visual e ser alcançáveis por teclado somente quando expandidas. Recolher com foco numa ação MUST retornar o foco a Mais. Expandir/recolher MUST NOT fechar o painel, apagar a busca ou consumir HOTP.
 
-#### Scenario: Use a nested action
+Configurações MUST permanecer visível como última opção, fora da seção expansível e da lista rolável, separada das demais ações e disponível com Mais recolhido ou expandido. Nenhuma ação MUST ter reticências. A altura MUST crescer quando houver espaço até 480 pontos; nesse limite, a lista OTP MUST reduzir sua viewport e continuar rolável sem ocultar ações ou Configurações.
 
-- **WHEN** o usuário abre Mais e escolhe Importar
-- **THEN** o menu permanece utilizável até a escolha e a janela de gerenciamento abre o fluxo de importação
+Bloquear MUST ficar acessível por um cadeado com nome acessível ao lado do título TopOTP, acima da busca, sem duplicação em Mais. Bloquear e Sair MUST funcionar independentemente da janela web. Sair MUST revogar a sessão e encerrar o processo; as ações de gerenciamento MUST direcionar à seção correspondente de uma única janela.
+
+#### Scenario: Expand and choose an action
+
+- **WHEN** o usuário aciona Mais e escolhe Importar
+- **THEN** as ações aparecem no próprio painel e a janela de gerenciamento abre o fluxo de importação após a escolha
+
+#### Scenario: Settings with More collapsed or expanded
+
+- **WHEN** Mais está recolhido ou expandido, inclusive com muitas contas e após rolar a lista
+- **THEN** Configurações continua como última opção visível fora da expansão e abre a janela de gerenciamento
+
+#### Scenario: Collapse while an action has focus
+
+- **WHEN** Mais é recolhido com foco em uma das ações internas
+- **THEN** o foco volta para Mais e o teclado não alcança ações ocultas
 
 #### Scenario: Lock without a responding management window
 
-- **WHEN** a janela web não responde e o usuário escolhe Bloquear no menu nativo
+- **WHEN** a janela web não responde e o usuário aciona o cadeado no cabeçalho nativo
 - **THEN** a sessão é revogada e o painel deixa de revelar contas e códigos
 
 ### Requirement: Short lived presentation and shared revocation
 
-Busca, rolagem, seleção e foco do painel MUST ser conservados somente em memória por menos de 30 segundos oculto, na mesma sessão autorizada. Códigos MUST ser removidos da apresentação ao ocultar e recalculados após revalidar a sessão na reabertura, sem consumir HOTP. Ao completar 30 segundos oculto, bloquear, expirar ou suspender, o estado de retomada MUST ser descartado. Ocultações repetidas MUST NOT renovar o prazo. Um bloqueio com painel aberto MUST retirar os dados sem iniciar novo prompt.
+Busca, rolagem, seleção, expansão de Mais e foco do painel MUST ser conservados somente em memória por menos de 30 segundos oculto, na mesma sessão autorizada. Códigos MUST ser removidos da apresentação ao ocultar e recalculados após revalidar a sessão na reabertura, sem consumir HOTP. Ao completar 30 segundos oculto, bloquear, expirar ou suspender, o estado de retomada MUST ser descartado. Ocultações repetidas MUST NOT renovar o prazo. Um bloqueio com painel aberto MUST retirar os dados sem iniciar novo prompt.
 
 #### Scenario: Reopen before the deadline
 
 - **WHEN** o usuário reabre em menos de 30 segundos, com a mesma sessão ainda válida
-- **THEN** busca, posição, seleção e foco são retomados com códigos atuais autorizados
+- **THEN** busca, posição, seleção, expansão de Mais e foco são retomados com códigos atuais autorizados
 
 #### Scenario: Deadline or revocation
 

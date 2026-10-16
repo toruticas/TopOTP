@@ -2,7 +2,7 @@
 use crate::domain::account::{AccountSummary, OtpKind};
 use objc2::{
     DefinedClass, MainThreadOnly, define_class, msg_send,
-    rc::Retained,
+    rc::{Retained, Weak},
     runtime::{ProtocolObject, Sel},
     sel,
 };
@@ -16,6 +16,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+mod layout;
 
 #[derive(Clone)]
 pub struct Row {
@@ -47,6 +48,9 @@ enum Focus {
     Search(NSRange),
     Row(String, u8),
     More,
+    Lock,
+    Settings,
+    Action(isize),
 }
 struct RowControls {
     id: String,
@@ -57,9 +61,16 @@ struct RowControls {
 }
 struct Ivars {
     callback: Callback,
+    popover: OnceCell<Weak<NSPopover>>,
+    title: OnceCell<Retained<NSTextField>>,
+    lock: OnceCell<Retained<NSButton>>,
     search: OnceCell<Retained<NSSearchField>>,
-    more: OnceCell<Retained<NSPopUpButton>>,
-    menu_opened: Cell<bool>,
+    more: OnceCell<Retained<NSButton>>,
+    actions: OnceCell<Vec<Retained<NSButton>>>,
+    action_group: OnceCell<Retained<NSView>>,
+    settings: OnceCell<Retained<NSButton>>,
+    section_separator: OnceCell<Retained<NSBox>>,
+    expanded: Cell<bool>,
     scroll: OnceCell<Retained<NSScrollView>>,
     document: OnceCell<Retained<NSView>>,
     message: OnceCell<Retained<NSTextField>>,
@@ -109,10 +120,6 @@ define_class!(
             (self.ivars().callback)(Action::Hidden);
         }
     }
-    unsafe impl NSMenuDelegate for Controller {
-        #[unsafe(method(menuWillOpen:))]
-        fn menu_open(&self, _: &NSMenu) { self.ivars().menu_opened.set(true); }
-    }
     unsafe impl NSTextFieldDelegate for Controller {}
     unsafe impl NSSearchFieldDelegate for Controller {}
     unsafe impl NSControlTextEditingDelegate for Controller {
@@ -157,10 +164,14 @@ define_class!(
         #[unsafe(method(nextRow:))]
         fn next_row(&self, sender: &NSButton) { self.button_action(sender, true); }
         #[unsafe(method(menuAction:))]
-        fn menu_action(&self, sender: &NSMenuItem) {
+        fn menu_action(&self, sender: &NSButton) {
             let action = match sender.tag() { 1 => MenuAction::Lock, 2 => MenuAction::NewAccount, 3 => MenuAction::Scan, 4 => MenuAction::Import, 5 => MenuAction::Export, 6 => MenuAction::Settings, 7 => MenuAction::Quit, _ => return };
             (self.ivars().callback)(Action::Menu(action));
         }
+        #[unsafe(method(lockVault:))]
+        fn lock_vault(&self, _: &NSButton) { (self.ivars().callback)(Action::Menu(MenuAction::Lock)); }
+        #[unsafe(method(showMore:))]
+        fn show_more(&self, _: &NSButton) { self.toggle_more(); }
         #[unsafe(method(cancelOperation:))]
         fn cancel(&self, _: Option<&objc2::runtime::AnyObject>) { (self.ivars().callback)(Action::Dismiss); }
     }
@@ -196,9 +207,16 @@ impl Controller {
     fn new(mtm: MainThreadMarker, callback: Callback) -> Retained<Self> {
         let allocated = Self::alloc(mtm).set_ivars(Ivars {
             callback,
+            popover: OnceCell::new(),
+            title: OnceCell::new(),
+            lock: OnceCell::new(),
             search: OnceCell::new(),
             more: OnceCell::new(),
-            menu_opened: Cell::new(false),
+            actions: OnceCell::new(),
+            action_group: OnceCell::new(),
+            settings: OnceCell::new(),
+            section_separator: OnceCell::new(),
+            expanded: Cell::new(false),
             scroll: OnceCell::new(),
             document: OnceCell::new(),
             message: OnceCell::new(),
@@ -216,11 +234,29 @@ impl Controller {
         };
         let root: Retained<ContainerView> =
             unsafe { msg_send![ContainerView::alloc(mtm), initWithFrame: rect(0.,0.,380.,480.)] };
-        let title = label(mtm, "TopOTP", rect(16., 444., 348., 24.), 16.);
+        let title = label(mtm, "TopOTP", rect(16., 444., 76., 24.), 16.);
+        let lock = unsafe {
+            NSButton::buttonWithTitle_target_action(
+                &string("Bloquear"),
+                Some(&this),
+                Some(sel!(lockVault:)),
+                mtm,
+            )
+        };
+        if let Some(image) = NSImage::imageWithSystemSymbolName_accessibilityDescription(
+            &string("lock"),
+            Some(&string("Bloquear")),
+        ) {
+            lock.setImage(Some(&image));
+            lock.setTitle(&string(""));
+        }
+        lock.setBordered(false);
+        lock.setAccessibilityLabel(Some(&string("Bloquear")));
+        lock.setToolTip(Some(&string("Bloquear cofre")));
         let search =
             NSSearchField::initWithFrame(NSSearchField::alloc(mtm), rect(14., 406., 352., 28.));
         search.setTag(42);
-        search.setPlaceholderString(Some(&string("Buscar contas…")));
+        search.setPlaceholderString(Some(&string("Buscar contas")));
         search.setAccessibilityLabel(Some(&string("Buscar contas")));
         search.setMaximumRecents(0);
         search.setRecentsAutosaveName(None);
@@ -234,68 +270,225 @@ impl Controller {
         let scroll =
             NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(6., 64., 368., 332.));
         scroll.setHasVerticalScroller(true);
+        scroll.setAutohidesScrollers(true);
         scroll.setDrawsBackground(false);
         let document: Retained<FlippedView> =
             unsafe { msg_send![FlippedView::alloc(mtm), initWithFrame: rect(0.,0.,350.,332.)] };
         scroll.setDocumentView(Some(&document));
         let message = label(mtm, "", rect(16., 40., 348., 18.), 11.);
         message.setTextColor(Some(&NSColor::secondaryLabelColor()));
-        let more = NSPopUpButton::initWithFrame_pullsDown(
-            NSPopUpButton::alloc(mtm),
-            rect(12., 8., 356., 28.),
-            true,
+        let more = unsafe {
+            NSButton::buttonWithTitle_target_action(
+                &string("Mais"),
+                Some(&this),
+                Some(sel!(showMore:)),
+                mtm,
+            )
+        };
+        more.setAlignment(NSTextAlignment::Left);
+        more.setImagePosition(NSCellImagePosition::ImageRight);
+        more.setImage(
+            NSImage::imageWithSystemSymbolName_accessibilityDescription(
+                &string("chevron.right"),
+                None,
+            )
+            .as_deref(),
         );
-        let menu = NSMenu::new(mtm);
-        menu.setAutoenablesItems(false);
-        menu.setDelegate(Some(ProtocolObject::from_ref(&*this)));
-        for (tag, title) in [
-            "Mais",
-            "Bloquear",
-            "Nova entrada…",
-            "Escanear QR da tela…",
-            "Importar…",
-            "Exportar…",
-            "Configurações…",
-            "Sair",
+        more.setAccessibilityLabel(Some(&string("Mais")));
+        let action_group = NSView::initWithFrame(NSView::alloc(mtm), rect(12., 46., 356., 0.));
+        let mut actions = Vec::new();
+        for (index, (tag, title)) in [
+            (2, "Nova entrada"),
+            (3, "Escanear QR da tela"),
+            (4, "Importar"),
+            (5, "Exportar"),
+            (7, "Sair"),
         ]
-        .iter()
+        .into_iter()
         .enumerate()
         {
             let item = unsafe {
-                NSMenuItem::initWithTitle_action_keyEquivalent(
-                    NSMenuItem::alloc(mtm),
+                NSButton::buttonWithTitle_target_action(
                     &string(title),
+                    Some(&this),
                     Some(sel!(menuAction:)),
-                    &string(""),
+                    mtm,
                 )
             };
-            item.setTag(tag as isize);
-            unsafe {
-                item.setTarget(Some(&this));
-            }
-            menu.addItem(&item);
+            item.setTag(tag);
+            item.setFrame(rect(
+                10.,
+                (layout::ACTION_COUNT - index - 1) as f64 * layout::ACTION_HEIGHT,
+                346.,
+                layout::ACTION_HEIGHT,
+            ));
+            item.setAlignment(NSTextAlignment::Left);
+            item.setBordered(false);
+            item.setAccessibilityLabel(Some(&string(title)));
+            action_group.addSubview(&item);
+            actions.push(item);
         }
-        more.setMenu(Some(&menu));
+        let settings = unsafe {
+            NSButton::buttonWithTitle_target_action(
+                &string("Configurações"),
+                Some(&this),
+                Some(sel!(menuAction:)),
+                mtm,
+            )
+        };
+        settings.setTag(6);
+        settings.setFrame(rect(12., 6., 356., 28.));
+        settings.setAlignment(NSTextAlignment::Left);
+        settings.setBordered(false);
+        settings.setAccessibilityLabel(Some(&string("Configurações")));
+        let section_separator = NSBox::new(mtm);
+        section_separator.setBoxType(NSBoxType::Separator);
+        let settings_separator = NSBox::new(mtm);
+        settings_separator.setBoxType(NSBoxType::Separator);
+        settings_separator.setFrame(rect(16., 40., 348., 1.));
         more.setBordered(false);
-        // SAFETY: The next key view belongs to this retained view hierarchy.
-        unsafe {
-            more.setNextKeyView(Some(&search));
-        }
         root.addSubview(&title);
+        root.addSubview(&lock);
         root.addSubview(&search);
         root.addSubview(&scroll);
         root.addSubview(&message);
         root.addSubview(&more);
+        root.addSubview(&action_group);
+        root.addSubview(&section_separator);
+        root.addSubview(&settings_separator);
+        root.addSubview(&settings);
         this.setView(&root);
+        this.ivars().title.set(title).unwrap();
+        this.ivars().lock.set(lock).unwrap();
         this.ivars().search.set(search).unwrap();
         this.ivars().more.set(more).unwrap();
+        this.ivars().actions.set(actions).unwrap();
+        this.ivars().action_group.set(action_group).unwrap();
+        this.ivars().settings.set(settings).unwrap();
+        this.ivars()
+            .section_separator
+            .set(section_separator)
+            .unwrap();
         this.ivars().scroll.set(scroll).unwrap();
         this.ivars()
             .document
             .set(Retained::into_super(document))
             .unwrap();
         this.ivars().message.set(message).unwrap();
+        this.render(true);
         this
+    }
+    fn layout(&self, count: usize) {
+        let expanded = self.ivars().expanded.get();
+        let layout = layout::panel(count, expanded);
+        let size = layout.size;
+        // Resize the host before its view so AppKit observes the actual change.
+        if let Some(popover) = self.ivars().popover.get().and_then(Weak::load) {
+            popover.setContentSize(size);
+        }
+        self.view().setFrameSize(size);
+        self.ivars()
+            .title
+            .get()
+            .unwrap()
+            .setFrame(rect(16., size.height - 36., 76., 24.));
+        let lock = self.ivars().lock.get().unwrap();
+        lock.setFrame(rect(
+            96.,
+            size.height - 36.,
+            if lock.image().is_some() { 24. } else { 72. },
+            24.,
+        ));
+        self.ivars()
+            .search
+            .get()
+            .unwrap()
+            .setFrame(rect(14., size.height - 74., 352., 28.));
+        let scroll = self.ivars().scroll.get().unwrap();
+        scroll.setFrame(rect(6., layout.list_y, 368., layout.list_height));
+        scroll.setHidden(count == 0);
+        self.ivars()
+            .message
+            .get()
+            .unwrap()
+            .setFrame(rect(16., layout.message_y, 348., 18.));
+        self.ivars()
+            .more
+            .get()
+            .unwrap()
+            .setFrame(rect(12., layout.more_y, 356., 28.));
+        self.ivars().section_separator.get().unwrap().setFrame(rect(
+            16.,
+            layout.more_y + 32.,
+            348.,
+            1.,
+        ));
+        let group = self.ivars().action_group.get().unwrap();
+        group.setFrame(rect(12., 46., 356., layout.actions_height));
+        group.setHidden(!expanded);
+        self.ivars()
+            .more
+            .get()
+            .unwrap()
+            .setAccessibilityExpanded(expanded);
+        self.update_more_arrow();
+        self.update_key_loop();
+        self.setPreferredContentSize(size);
+    }
+    fn toggle_more(&self) {
+        if self.ivars().expanded.get()
+            && let Some(window) = self.view().window()
+            && window.firstResponder().is_some_and(|responder| {
+                self.ivars()
+                    .actions
+                    .get()
+                    .unwrap()
+                    .iter()
+                    .any(|action| responder.isEqual(Some(action)))
+            })
+        {
+            window.makeFirstResponder(Some(&**self.ivars().more.get().unwrap()));
+        }
+        self.ivars().expanded.set(!self.ivars().expanded.get());
+        (self.ivars().callback)(Action::Interact);
+        self.render(false);
+    }
+    fn update_more_arrow(&self) {
+        self.ivars().more.get().unwrap().setImage(
+            NSImage::imageWithSystemSymbolName_accessibilityDescription(
+                &string(if self.ivars().expanded.get() {
+                    "chevron.down"
+                } else {
+                    "chevron.right"
+                }),
+                None,
+            )
+            .as_deref(),
+        );
+    }
+    fn update_key_loop(&self) {
+        let more = self.ivars().more.get().unwrap();
+        let lock = self.ivars().lock.get().unwrap();
+        let search = self.ivars().search.get().unwrap();
+        let settings = self.ivars().settings.get().unwrap();
+        // SAFETY: All key views belong to this retained hierarchy. Hidden actions
+        // are excluded explicitly, including when the empty search is disabled.
+        unsafe {
+            lock.setNextKeyView(Some(if search.isEnabled() {
+                &**search
+            } else {
+                &**more
+            }));
+            settings.setNextKeyView(Some(lock));
+            let mut previous = more;
+            if self.ivars().expanded.get() {
+                for action in self.ivars().actions.get().unwrap() {
+                    previous.setNextKeyView(Some(action));
+                    previous = action;
+                }
+            }
+            previous.setNextKeyView(Some(settings));
+        }
     }
     fn button_action(&self, sender: &NSButton, next: bool) {
         let Some(id) = sender.identifier().map(|id| id.to_string()) else {
@@ -377,6 +570,19 @@ impl Controller {
             }
             if responder.isEqual(Some(self.ivars().more.get().unwrap())) {
                 *self.ivars().focused.borrow_mut() = Focus::More;
+            } else if responder.isEqual(Some(self.ivars().lock.get().unwrap())) {
+                *self.ivars().focused.borrow_mut() = Focus::Lock;
+            } else if responder.isEqual(Some(self.ivars().settings.get().unwrap())) {
+                *self.ivars().focused.borrow_mut() = Focus::Settings;
+            } else if let Some(action) = self
+                .ivars()
+                .actions
+                .get()
+                .unwrap()
+                .iter()
+                .find(|action| responder.isEqual(Some(&***action)))
+            {
+                *self.ivars().focused.borrow_mut() = Focus::Action(action.tag());
             }
         }
     }
@@ -384,8 +590,14 @@ impl Controller {
         let search = self.ivars().search.get().unwrap();
         match self.ivars().focused.borrow().clone() {
             Focus::Search(range) => {
-                window.makeFirstResponder(Some(search));
-                if let Some(editor) = search.currentEditor() {
+                if !search.isEnabled() {
+                    window.makeFirstResponder(Some(&**self.ivars().more.get().unwrap()));
+                } else {
+                    window.makeFirstResponder(Some(search));
+                }
+                if search.isEnabled()
+                    && let Some(editor) = search.currentEditor()
+                {
                     let length = search.stringValue().length();
                     let location = range.location.min(length);
                     editor.setSelectedRange(NSRange::new(
@@ -397,6 +609,22 @@ impl Controller {
             Focus::More => {
                 window.makeFirstResponder(Some(&**self.ivars().more.get().unwrap()));
             }
+            Focus::Lock => {
+                window.makeFirstResponder(Some(&**self.ivars().lock.get().unwrap()));
+            }
+            Focus::Settings => {
+                window.makeFirstResponder(Some(&**self.ivars().settings.get().unwrap()));
+            }
+            Focus::Action(tag) => {
+                let action = self
+                    .ivars()
+                    .actions
+                    .get()
+                    .unwrap()
+                    .iter()
+                    .find(|action| action.tag() == tag && self.ivars().expanded.get());
+                window.makeFirstResponder(Some(action.unwrap_or(self.ivars().more.get().unwrap())));
+            }
             Focus::Row(id, part) => {
                 let rows = self.ivars().controls.borrow();
                 if let Some(row) = rows.iter().find(|row| row.id == id) {
@@ -406,8 +634,10 @@ impl Controller {
                         _ => &row.name,
                     };
                     window.makeFirstResponder(Some(button));
-                } else {
+                } else if search.isEnabled() {
                     window.makeFirstResponder(Some(search));
+                } else {
+                    window.makeFirstResponder(Some(&**self.ivars().more.get().unwrap()));
                 }
             }
         }
@@ -432,6 +662,7 @@ impl Controller {
         self.ivars().selected.set(None);
         self.ivars().hidden_at.set(None);
         self.ivars().epoch.borrow_mut().clear();
+        self.ivars().expanded.set(false);
         *self.ivars().focused.borrow_mut() = Focus::Search(NSRange::new(0, 0));
         self.render(true);
         self.ivars()
@@ -455,6 +686,12 @@ impl Controller {
                 .contains(&query)
             })
             .collect();
+        self.ivars()
+            .search
+            .get()
+            .unwrap()
+            .setEnabled(!rows.is_empty());
+        self.layout(filtered.len());
         let same = !force
             && self
                 .ivars()
@@ -472,7 +709,12 @@ impl Controller {
             for child in document.subviews() {
                 child.removeFromSuperview();
             }
-            document.setFrame(rect(0., 0., 350., (filtered.len() as f64 * 60.).max(332.)));
+            document.setFrame(rect(
+                0.,
+                0.,
+                350.,
+                filtered.len() as f64 * layout::ROW_HEIGHT,
+            ));
             for (index, row) in filtered.iter().enumerate() {
                 let name = unsafe {
                     NSButton::buttonWithTitle_target_action(
@@ -551,6 +793,17 @@ impl Controller {
                 });
             }
         }
+        let document = self.ivars().document.get().unwrap();
+        let scroll = self.ivars().scroll.get().unwrap();
+        // Auto-hiding depends on the updated document extent, not its old size.
+        scroll.setHasVerticalScroller(
+            filtered.len() as f64 * layout::ROW_HEIGHT > scroll.frame().size.height,
+        );
+        let clip = scroll.contentView();
+        scroll.reflectScrolledClipView(&clip);
+        let max_scroll = (document.frame().size.height - clip.bounds().size.height).max(0.);
+        let offset = clip.bounds().origin;
+        document.scrollPoint(NSPoint::new(offset.x, offset.y.clamp(0., max_scroll)));
         for (control, row) in self.ivars().controls.borrow().iter().zip(filtered.iter()) {
             control.name.setTitle(&string(&row_title(row)));
             control.name.setAccessibilityLabel(Some(&string(&format!(
@@ -593,7 +846,13 @@ pub fn install(callback: Callback) {
     let controller = Controller::new(mtm, callback);
     let popover = NSPopover::new(mtm);
     popover.setContentViewController(Some(&controller));
-    popover.setContentSize(NSSize::new(380., 480.));
+    popover.setContentSize(layout::panel(0, false).size);
+    controller
+        .ivars()
+        .popover
+        .set(Weak::from_retained(&popover))
+        .ok()
+        .unwrap();
     popover.setBehavior(NSPopoverBehavior::Transient);
     popover.setAnimates(false);
     popover.setDelegate(Some(ProtocolObject::from_ref(&*controller)));
@@ -625,6 +884,10 @@ pub fn show(anchor: &NSStatusBarButton, rows: Vec<Row>, epoch: &str) {
                 anchor,
                 NSRectEdge::MinY,
             );
+            // A reopened popover can restore its cached hidden content size.
+            panel
+                .popover
+                .setContentSize(panel.controller.preferredContentSize());
             if let Some(window) = ivars.search.get().unwrap().window() {
                 window.makeKeyAndOrderFront(None);
                 panel.controller.restore_focus(&window);

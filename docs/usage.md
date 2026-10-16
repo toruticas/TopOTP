@@ -8,9 +8,9 @@ Para HOTP, exporte imediatamente antes da troca e não gere novos códigos no ap
 
 Abra TopOTP e clique no ícone na barra de menus. Quando bloqueado, esse clique inicia uma única autenticação do macOS por Touch ID ou senha; a lista abre após aprovação. Cancelar encerra a tentativa. O aplicativo inicia bloqueado; não há senha mestre própria nem conta Apple exigida.
 
-O painel AppKit abre abaixo do ícone. Clicar fora ou pressionar Escape o oculta. Reabrir em menos de 30 segundos retoma busca, rolagem, foco e seleção enquanto a sessão estiver válida. Códigos são limpos ao ocultar e retornam após revalidar a sessão. Esse estado vive somente em memória e é descartado ao completar 30 segundos oculto, bloquear ou expirar a sessão, mesmo que a janela de gerenciamento continue aberta.
+O painel AppKit abre abaixo do ícone e ajusta a altura à quantidade de contas exibidas, inclusive após filtrar. Poucas contas deixam o painel compacto; muitas mantêm o limite de altura anterior e usam rolagem interna. Clicar fora ou pressionar Escape o oculta. Reabrir em menos de 30 segundos retoma busca, rolagem, foco e seleção enquanto a sessão estiver válida. Códigos são limpos ao ocultar e retornam após revalidar a sessão. Esse estado vive somente em memória e é descartado ao completar 30 segundos oculto, bloquear ou expirar a sessão, mesmo que a janela de gerenciamento continue aberta.
 
-A busca nativa filtra emissor/conta sem distinção de caso ou acentos. Command-F retorna à busca; setas selecionam resultados, Return copia o código selecionado e Tab alcança os controles. **Mais** abre Bloquear, Nova entrada, Escanear QR da tela, Importar, Exportar, Configurações e Sair.
+A busca nativa filtra emissor/conta sem distinção de caso ou acentos. Fica desativada quando o cofre está vazio e volta a funcionar após adicionar contas; uma pesquisa sem resultados continua editável. Command-F retorna à busca; setas selecionam resultados, Return copia o código selecionado e Tab alcança os controles. O cadeado ao lado de **TopOTP**, acima da busca, bloqueia o cofre. **Mais** expande/recolhe no próprio painel as ações Nova entrada, Escanear QR da tela, Importar, Exportar e Sair. **Configurações** permanece como última opção, fora dessa seção e sempre visível. As ações não usam reticências. A expansão também é retomada ao reabrir em menos de 30 segundos na mesma sessão.
 
 **Configurações** abre uma janela própria com Geral, Contas e os formulários de cadastro/transferência. Ela permanece aberta ao clicar fora ou trocar de aplicativo; Escape também não a fecha. Pode ser redimensionada e compartilha a mesma sessão do painel. Fechar pelo controle da janela a oculta e descarta formulários/prévias, sem encerrar o app. Minimizar limpa campos secretos e códigos, sem aplicar um prazo web para descartar a tela. Os prazos do cofre continuam vigentes: se a sessão expirar, a janela continua aberta com o desbloqueio disponível. Após desbloquear, Geral é retomada. Geral mostra versão e limites vigentes; ainda não há controles para mudar a política de sessão.
 
@@ -38,7 +38,7 @@ Steam/Battle.net/hex/GOST, backups criptografados antigos, câmera e Google migr
 
 ## QR de uma área da tela
 
-Escolha **Mais → Escanear QR da tela…** com o cofre desbloqueado. Autorize a captura em Privacidade e Segurança → Gravação da Tela quando solicitado pelo macOS. Se o sistema exigir reiniciar após conceder acesso, reabra o app; recusa não inicia tentativas automáticas.
+Escolha **Mais → Escanear QR da tela** com o cofre desbloqueado. Autorize a captura em Privacidade e Segurança → Gravação da Tela quando solicitado pelo macOS. Se o sistema exigir reiniciar após conceder acesso, reabra o app; recusa não inicia tentativas automáticas.
 
 Arraste uma região sobre um QR TOTP/HOTP; Escape cancela. Cada seleção fica no monitor onde o arraste começou. A captura ocorre após remover a seleção e o painel; é processada localmente em memória, sem arquivo temporário, clipboard ou envio ao webview. Se houver vários QRs, escolha uma conta na revisão e confirme **Salvar conta**. A leitura sozinha não cadastra contas nem avança HOTP; duplicatas preservam o existente.
 
