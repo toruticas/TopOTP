@@ -25,9 +25,6 @@ use zeroize::Zeroizing;
 pub struct VaultStatus {
     pub phase: Phase,
     pub epoch: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub legacy_migration_required: Option<bool>,
 }
 #[derive(Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
@@ -56,7 +53,6 @@ pub struct Core {
     clock: Arc<dyn Clock>,
     dialogs: AtomicUsize,
     revocation: AtomicU64,
-    legacy_migration: AtomicBool,
     removing: AtomicBool,
 }
 impl Core {
@@ -102,25 +98,16 @@ impl Core {
             clock,
             dialogs: AtomicUsize::new(0),
             revocation: AtomicU64::new(0),
-            legacy_migration: AtomicBool::new(false),
             removing: AtomicBool::new(false),
         })
     }
     pub fn now(&self) -> Duration {
         self.clock.elapsed()
     }
-    /// Only the native factory detects the old opaque manifest. No old seed is read.
-    pub fn require_legacy_migration(&self) {
-        self.legacy_migration.store(true, Ordering::SeqCst);
-    }
     fn vault_status(&self, inner: &Inner) -> VaultStatus {
-        if !inner.vault.references().is_empty() {
-            self.legacy_migration.store(false, Ordering::SeqCst);
-        }
         VaultStatus {
             phase: inner.session.phase,
             epoch: inner.session.epoch.to_string(),
-            legacy_migration_required: self.legacy_migration.load(Ordering::SeqCst).then_some(true),
         }
     }
     fn guard(&self) -> AppResult<MutexGuard<'_, Inner>> {
@@ -328,9 +315,6 @@ impl Core {
         // Keep erasure and revocation under the same lock. authorized() cannot
         // wrap this operation because successful erasure invalidates its epoch.
         let result = inner.vault.remove_all();
-        if inner.vault.references().is_empty() {
-            self.legacy_migration.store(false, Ordering::SeqCst);
-        }
         self.revoke(&mut inner);
         result?;
         Ok(self.vault_status(&inner))

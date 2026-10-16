@@ -4,6 +4,20 @@ Oferecer consulta e cópia rápida de OTPs por uma lista nativa do macOS, com de
 
 ## ADDED Requirements
 
+### Requirement: First use through the normal native panel
+
+Um cofre sem entradas MUST seguir o mesmo fluxo de autenticação/apresentação de um cofre existente: após desbloqueio explícito, mostrar o painel nativo vazio com Mais disponível. A presença de arquivos de versões anteriores MUST NOT abrir uma janela de migração nem restringir as ações. O usuário MUST poder escolher Nova entrada, Importar ou Escanear QR da tela como primeira ação. Nenhuma dessas operações MUST iniciar automaticamente ou criar contas antes de confirmação.
+
+#### Scenario: Open an empty vault with older data preserved
+
+- **WHEN** o usuário desbloqueia um cofre atual vazio, com ou sem manifesto de versão anterior
+- **THEN** o painel aparece abaixo do ícone, sem linhas de OTP e sem janela automática, mantendo as ações de Mais disponíveis
+
+#### Scenario: Cancel a first import and choose another action
+
+- **WHEN** o usuário cancela a seleção ou revisão da primeira importação e escolhe Nova entrada ou Escanear QR da tela
+- **THEN** a ação escolhida funciona normalmente, sem exigir migração ou adicionar uma conta automaticamente
+
 ### Requirement: Native quick access surface
 
 O app MUST iniciar bloqueado, com um único ícone na barra de menus e sem janela de gerenciamento aberta. Acionar o ícone com sessão válida MUST apresentar uma lista de controles nativos imediatamente abaixo dele, limitada à área disponível do monitor correspondente. A aparência MUST acompanhar o tema e as preferências de acessibilidade do sistema; Escape, novo clique no ícone ou clique fora MUST ocultar o painel. Fechá-lo MUST manter o aplicativo em execução.

@@ -575,7 +575,7 @@ impl Controller {
             .get()
             .unwrap()
             .setStringValue(&string(if rows.is_empty() {
-                "Adicione uma conta pelo menu Mais."
+                "Nenhuma conta cadastrada."
             } else if filtered.is_empty() {
                 "Nenhuma conta encontrada."
             } else {

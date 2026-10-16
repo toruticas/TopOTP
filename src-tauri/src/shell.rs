@@ -28,7 +28,6 @@ pub enum ManagementRoute {
     Import,
     Export,
     QrReview,
-    Migration,
 }
 #[derive(Clone, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
@@ -166,15 +165,6 @@ fn load(app: tauri::AppHandle, shell: Arc<Shell>, intent: u64, epoch: String, sh
                 {
                     quick_access::error_message(&error.to_string());
                 }
-                return;
-            }
-            if show
-                && shell
-                    .core
-                    .status()
-                    .is_ok_and(|s| s.legacy_migration_required == Some(true))
-            {
-                let _ = open_management(&app, ManagementRoute::Migration);
                 return;
             }
             match result {

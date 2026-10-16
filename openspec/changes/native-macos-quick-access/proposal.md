@@ -5,6 +5,7 @@ A beta atual funciona, mas concentra o acesso rápido a códigos e todos os form
 ## What Changes
 
 - Acrescentar remoção confirmada dos dados do cofre atual em Configurações e manter a janela de gerenciamento aberta ao perder foco, com fechamento controlado pelo usuário e bloqueio automático preservado.
+- Manter o primeiro acesso no painel nativo vazio após autenticar, mesmo quando existe um cofre de versão anterior. Nova entrada, importação e captura de QR ficam disponíveis em Mais, sem janela de migração ou ação inicial obrigatória.
 
 - Substituir a apresentação cotidiana do painel web por um painel AppKit ancorado no ícone, com controles nativos, lista compacta de contas, código/validade e aparência adaptada ao sistema.
 - Ao clicar no ícone com o cofre bloqueado, solicitar imediatamente Touch ID/senha do macOS uma única vez; apresentar a lista após sucesso. Cancelamento, expiração, notificações e atualização de códigos não disparam novas tentativas automaticamente.

@@ -368,14 +368,10 @@ fn storage_denial_revokes_session_and_background_work_never_retries_reads() {
 }
 
 #[test]
-fn migration_waits_for_a_committed_import_and_preserves_current_hotp_counter() {
+fn empty_vault_stays_usable_after_a_failed_first_import() {
     let f = Fixture::new();
-    f.core.require_legacy_migration();
     let epoch = f.unlock();
-    assert_eq!(
-        f.core.status().unwrap().legacy_migration_required,
-        Some(true)
-    );
+    assert!(f.core.list(&epoch).unwrap().is_empty());
     let preview = f
         .core
         .prepare_uri(
@@ -384,10 +380,7 @@ fn migration_waits_for_a_committed_import_and_preserves_current_hotp_counter() {
         )
         .unwrap();
     let id = Uuid::parse_str(&preview.rows[0].account.as_ref().unwrap().id).unwrap();
-    assert_eq!(
-        f.core.status().unwrap().legacy_migration_required,
-        Some(true)
-    );
+    assert!(f.core.list(&epoch).unwrap().is_empty());
     f.data.lock().unwrap().fail_insert = true;
     assert!(
         f.core
@@ -399,10 +392,8 @@ fn migration_waits_for_a_committed_import_and_preserves_current_hotp_counter() {
             )
             .is_err()
     );
-    assert_eq!(
-        f.core.status().unwrap().legacy_migration_required,
-        Some(true)
-    );
+    assert!(f.core.list(&epoch).unwrap().is_empty());
+    assert_eq!(f.core.status().unwrap().phase, Phase::Unlocked);
     f.data.lock().unwrap().fail_insert = false;
     let preview = f
         .core
@@ -420,13 +411,13 @@ fn migration_waits_for_a_committed_import_and_preserves_current_hotp_counter() {
             false,
         )
         .unwrap();
-    assert_eq!(f.core.status().unwrap().legacy_migration_required, None);
     assert_eq!(
         f.core.list(&epoch).unwrap()[0].next_counter.as_deref(),
         Some("123")
     );
     f.core.delete(&epoch, id).unwrap();
-    assert_eq!(f.core.status().unwrap().legacy_migration_required, None);
+    assert!(f.core.list(&epoch).unwrap().is_empty());
+    assert_eq!(f.core.status().unwrap().phase, Phase::Unlocked);
 }
 
 #[test]
@@ -481,7 +472,6 @@ fn encrypted_migration_between_vaults_preserves_accounts_order_pins_and_latest_c
         )
         .unwrap();
     let new = Fixture::new();
-    new.core.require_legacy_migration();
     let epoch = new.unlock();
     let preview = new.core.prepare_import(&epoch, bytes).unwrap();
     let passwords = preview
@@ -523,7 +513,6 @@ fn encrypted_migration_between_vaults_preserves_accounts_order_pins_and_latest_c
             false,
         )
         .unwrap();
-    assert_eq!(new.core.status().unwrap().legacy_migration_required, None);
     let metadata = |mut value: serde_json::Value| {
         for account in value.as_array_mut().unwrap() {
             account.as_object_mut().unwrap().remove("id");

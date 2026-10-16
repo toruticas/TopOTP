@@ -149,42 +149,75 @@ describe('vault presentation boundaries', () => {
       'Todos os dados deste cofre foram removidos.',
     );
   });
-  it('offers backup migration instead of an empty vault and resumes it after cancellation', async () => {
-    const migration: VaultStatus = {
-      phase: 'unlocked',
-      epoch: '2',
-      legacyMigrationRequired: true,
-    };
-    vi.mocked(api.status).mockResolvedValue(migration);
+  it('keeps an empty vault ready for import, cancellation and manual setup', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
     vi.mocked(api.list).mockResolvedValue([]);
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Seu primeiro código');
+    expect(wrapper.find('nav').exists()).toBe(true);
+    expect(api.import).not.toHaveBeenCalled();
     vi.mocked(api.managementReady).mockResolvedValueOnce({
-      route: 'migration',
+      route: 'import',
       epoch: '2',
     });
     vi.mocked(api.import).mockRejectedValueOnce({ code: 'Cancelled' });
-    wrapper = mount(App, { attachTo: document.body });
+    listeners.get('management-route')?.();
     await flushPromises();
-    expect(wrapper.get('h2').text()).toBe('Traga suas contas para esta versão');
-    expect(wrapper.text()).toContain(
-      'não gere novos códigos na versão anterior',
-    );
-    expect(wrapper.text()).not.toContain('Seu primeiro código');
-    expect(wrapper.find('nav').exists()).toBe(false);
-    await wrapper.get('button.primary').trigger('click');
-    await flushPromises();
-    expect(wrapper.get('h2').text()).toBe('Traga suas contas para esta versão');
+    expect(wrapper.text()).toContain('Seu primeiro código');
+    expect(wrapper.find('nav').exists()).toBe(true);
+    expect(api.import).toHaveBeenCalledTimes(1);
     vi.mocked(api.import).mockResolvedValue({
       origin: 'backup',
-      id: 'migration-preview',
+      id: 'first-preview',
       keys: [],
       rows: [{ sourceId: 'source', account, issue: null }],
     });
-    await wrapper.get('button.primary').trigger('click');
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'import',
+      epoch: '2',
+    });
+    listeners.get('management-route')?.();
     await flushPromises();
     expect(wrapper.findComponent(ImportForm).exists()).toBe(true);
     wrapper.findComponent(ImportForm).vm.$emit('cancel');
     await flushPromises();
-    expect(wrapper.get('h2').text()).toBe('Traga suas contas para esta versão');
+    expect(wrapper.text()).toContain('Seu primeiro código');
+    expect(wrapper.find('nav').exists()).toBe(true);
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'new-account',
+      epoch: '2',
+    });
+    listeners.get('management-route')?.();
+    await flushPromises();
+    expect(wrapper.findComponent(AccountForm).exists()).toBe(true);
+    expect(api.unlock).not.toHaveBeenCalled();
+  });
+  it('opens an explicitly requested QR review in an empty vault', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
+    vi.mocked(api.list).mockResolvedValue([]);
+    vi.mocked(api.pendingPreview).mockResolvedValue({
+      origin: 'qr',
+      id: 'first-qr',
+      keys: [],
+      rows: [{ sourceId: 'source', account, issue: null }],
+    });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    expect(api.pendingPreview).not.toHaveBeenCalled();
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'qr-review',
+      epoch: '2',
+    });
+    listeners.get('management-route')?.();
+    await flushPromises();
+    expect(api.pendingPreview).toHaveBeenCalledExactlyOnceWith('2');
+    expect(wrapper.findComponent(ImportForm).props('preview').origin).toBe(
+      'qr',
+    );
+    expect(wrapper.find('nav').exists()).toBe(true);
+    expect(api.import).not.toHaveBeenCalled();
+    expect(api.commit).not.toHaveBeenCalled();
     expect(api.unlock).not.toHaveBeenCalled();
   });
   it('applies the latest native route after an earlier route finishes loading', async () => {

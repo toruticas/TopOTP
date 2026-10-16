@@ -25,12 +25,17 @@ pub fn run() {
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     let copies = Rc::new(Cell::new(0));
     let received = copies.clone();
+    let menu_actions = Rc::new(RefCell::new(Vec::new()));
+    let received_menu_actions = menu_actions.clone();
     install(Rc::new(move |action| match action {
         Action::Dismiss => hide(),
         Action::Menu(MenuAction::Quit) => {
             NSApplication::sharedApplication(MainThreadMarker::new().unwrap()).terminate(None)
         }
-        Action::Menu(_) => notice("Ação nativa recebida"),
+        Action::Menu(action) => {
+            received_menu_actions.borrow_mut().push(action);
+            notice("Ação nativa recebida");
+        }
         Action::Copy(_) => {
             received.set(received.get() + 1);
             notice("Cópia sintética recebida");
@@ -162,11 +167,24 @@ pub fn run() {
         expire_hidden();
         let expired =
             search.stringValue().is_empty() && controller.ivars().rows.borrow().is_empty();
+        show(&button, vec![], "first-use");
+        let empty_shown = popover.isShown()
+            && controller.ivars().rows.borrow().is_empty()
+            && controller.ivars().controls.borrow().is_empty();
+        let more = controller.ivars().more.get().unwrap();
+        let menu = more.menu().unwrap();
+        let mut first_actions_enabled = more.isEnabled();
+        for index in [2, 4, 3] {
+            first_actions_enabled &= menu.itemAtIndex(index).unwrap().isEnabled();
+            menu.performActionForItemAtIndex(index);
+        }
+        let first_actions_dispatched = *menu_actions.borrow()
+            == vec![MenuAction::NewAccount, MenuAction::Import, MenuAction::Scan];
         show(&button, synthetic_rows.clone(), "synthetic");
         let output =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../.artifacts/native-quick-access");
         std::fs::create_dir_all(&output).unwrap();
-        let report = serde_json::json!({"syntheticOnly":true,"nativeSearchFocused":focus,"keyboardInputReceived":typed,"accentInsensitiveResults":accent,"copyActionReceived":copies.get()==1,"menuOpened":controller.ivars().menu_opened.get(),"popoverStayedOpenForMenu":menu_visible.get(),"popoverStillOpen":popover.isShown(),"anchoredBelowIcon":anchored,"hiddenCodesCleared":masked,"resumeBefore30Seconds":resumed,"resumeDetails":resume_debug,"expiresAt30Seconds":expired,"commandFFocusesSearch":cmd_f,"panelFrame":[frame.origin.x,frame.origin.y,frame.size.width,frame.size.height],"anchorFrame":[anchor.origin.x,anchor.origin.y,anchor.size.width,anchor.size.height]});
+        let report = serde_json::json!({"syntheticOnly":true,"nativeSearchFocused":focus,"keyboardInputReceived":typed,"accentInsensitiveResults":accent,"copyActionReceived":copies.get()==1,"menuOpened":controller.ivars().menu_opened.get(),"popoverStayedOpenForMenu":menu_visible.get(),"popoverStillOpen":popover.isShown(),"anchoredBelowIcon":anchored,"hiddenCodesCleared":masked,"resumeBefore30Seconds":resumed,"resumeDetails":resume_debug,"expiresAt30Seconds":expired,"commandFFocusesSearch":cmd_f,"emptyVaultShown":empty_shown,"emptyVaultActionsEnabled":first_actions_enabled,"emptyVaultActionsDispatched":first_actions_dispatched,"panelFrame":[frame.origin.x,frame.origin.y,frame.size.width,frame.size.height],"anchorFrame":[anchor.origin.x,anchor.origin.y,anchor.size.width,anchor.size.height]});
         std::fs::write(
             output.join("native-probe.json"),
             serde_json::to_vec_pretty(&report).unwrap(),

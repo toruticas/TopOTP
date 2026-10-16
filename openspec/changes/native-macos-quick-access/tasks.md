@@ -77,6 +77,12 @@
 - [x] 11.6 Testar troca de builds no login real com dados sintéticos, isolamento de cliente/certificado, pin incorreto do helper, resposta excessiva, encerramento, timeout e falhas/revogação; executar as suítes pertinentes.
 - [x] 11.7 Gerar candidato isolado, registrar provas/limites e conduzir transferência pela UI a partir da versão restaurada; só declarar a restauração pessoal após confirmação do usuário.
 
+## 12. Primeiro acesso sem etapa obrigatória
+
+- [x] 12.1 Remover detecção/estado/rota que forçam migração e manter o painel nativo vazio como apresentação normal após autenticar; preservar os cofres e ações de Mais.
+- [x] 12.2 Cobrir cofre vazio, escolha explícita de cadastro/importação/QR, cancelamento e menu nativo com dados sintéticos; executar checks pertinentes sem alterar o helper fixo ou o ator de autenticação.
+- [x] 12.3 Atualizar documentação, gerar/inspecionar candidato com o mesmo helper e validar a atualização antes de instalar, preservando a versão confirmada pelo usuário.
+
 ## Evidências em andamento
 
 - Base `530bf1c` e bundles anteriores preservados; hashes em `.artifacts/native-quick-access/baseline/baseline.json`.
@@ -103,3 +109,6 @@
 - Verificação do complemento 11: 76 testes Rust, um interop, 22 Vue e cinco fluxos E2E com Store/helper/Keychain reais aprovados; auth/clipboard/diálogos E2E sintéticos. O teste de foco foi explicitamente pulado por `com.apple.loginwindow`, sem transformar o desktop bloqueado em prova de foco. Typecheck, ESLint, Prettier, rustfmt e Clippy com `e2e,native-probe` passaram; logs finais em `.artifacts/keychain-broker/final-check-*.log`.
 - Candidato arm64 inspecionado e DMG verificado em `.artifacts/keychain-broker/target/`; helper conserva CDHash `72e01246…`. Uma cópia com pai reempacotado/reassinado e helper igual passou no novo preflight nos dois sentidos; direto → helper retorna migração obrigatória. No app **Teste**, o usuário confirmou “Sim, abriu com Touch ID sem erro”; o manifesto sintético contém duas referências.
 - Após a confirmação nativa, candidato instalado em `/Applications/TopOTP.app`, com assinatura/pins/inspeção aprovados no destino e versão anterior preservada. Recibo `.artifacts/keychain-broker/installation.json`; metadados dos cofres anteriores inalterados. O usuário confirmou desbloqueio e importação pessoal pela UI: “Sim, desbloqueou e importou normalmente”. Nenhum arquivo, senha ou valor de conta pessoal foi lido pelo agente. 9.5 e 11.7 concluídas; 7.3/7.4 mantêm verificações manuais ainda não demonstradas, sem arquivamento automático.
+
+- Complemento 12: o primeiro acesso passa pelo painel nativo normal, sem detecção/flag/rota de migração; importação, cadastro e QR continuam escolhas explícitas. Passaram 76 testes Rust, um interop, 23 Vue e seis E2E com helper/Keychain reais e auth/clipboard/diálogos sintéticos. O probe AppKit exibiu a lista vazia e comprovou que Nova entrada, Importar e Escanear estão habilitados e disparam seus callbacks. Relatórios em `.artifacts/first-use/`. Helper fixo, adaptadores de Keychain/LocalAuthentication e dados pessoais não foram modificados.
+- Build do complemento 12 instalado em `/Applications/TopOTP.app`, SHA-256 `52117f90…`, após inspeção e preflight normal aprovados, com o mesmo helper `72e01246…` e sem migração. App/DMG e checksum em `.artifacts/first-use/`; versão confirmada anterior preservada no rollback. Manifestos/journals opacos permaneceram iguais durante a instalação. Recibo `installation.json`; testes nativos novos usaram somente dados sintéticos, sem reset ou leitura das contas pessoais.

@@ -31,6 +31,8 @@ Leia nesta ordem:
 - `src/lib/ipc/` centraliza contratos e chamadas tipadas. `src-tauri/src/domain/` não depende de Tauri nem de frameworks Apple.
 - Integração macOS isolada em `src-tauri/src/platform/macos/`. Nenhum backend inseguro é habilitado automaticamente em plataformas não suportadas.
 - `shell.rs` coordena intenção/visibilidade/rotas. O painel AppKit chama o core diretamente; objetos AppKit ficam na thread principal. Apenas `management` e a origem local podem usar IPC. Rotas nativas pendentes aguardam a autorização/UI pronta.
+- Primeiro acesso: desbloquear pelo ícone abre o painel nativo vazio, com Mais disponível para cadastro, importação e scanner. Não detectar manifestos antigos para forçar janela/rota de migração, esconder navegação ou impedir outras ações; os cofres anteriores continuam preservados.
+- O build deste ajuste está instalado, executável SHA-256 `52117f90…`, com o mesmo helper `72e01246…` e preflight normal aprovado. Artefatos/rollback em `.artifacts/first-use/`; não zerar o cofre pessoal para verificar o estado vazio. O probe AppKit usa lista sintética vazia e cobre as três primeiras ações.
 - `quick_access/` contém views nativas e o probe sintético; `scan/` contém seleção por monitor, ScreenCaptureKit e Vision. No macOS 14+ usar SCScreenshotManager; no 13, um frame completo SCStream e parada imediata. `sourceRect` usa pontos, resolução de saída usa pixels.
 - O runtime deve operar offline, com assets empacotados e WebKit nativo. Não adicionar servidor, analytics, sincronização em nuvem ou Node/Chromium embarcado nesta mudança.
 

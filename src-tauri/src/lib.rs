@@ -80,21 +80,6 @@ pub fn run() {
                 Arc::new(platform::macos::clipboard::NativeClipboard),
                 Arc::new(application::core::SystemClock::default()),
             )?);
-            #[cfg(not(any(feature = "e2e", feature = "native-smoke")))]
-            {
-                let root = app.path().app_data_dir()?;
-                let (legacy, previous, current) = if cfg!(debug_assertions) {
-                    ("dev", "dev", "dev-signed-v1")
-                } else {
-                    ("vault", "vault-signed-v1", "vault-broker-v1")
-                };
-                if (root.join(legacy).join("manifest.json").is_file()
-                    || root.join(previous).join("manifest.json").is_file())
-                    && !root.join(current).join("manifest.json").exists()
-                {
-                    core.require_legacy_migration();
-                }
-            }
             #[cfg(feature = "e2e")]
             let core = Arc::new(e2e::core()?);
             app.manage(core.clone());

@@ -34,12 +34,12 @@ O helper MUST aceitar somente um socket anônimo herdado do processo pai. MUST v
 
 ### Requirement: Preserve the direct vault during owner migration
 
-A passagem do dono direto ao helper MUST usar novo serviço/manifesto, detectar o cofre direto e orientar importação por backup na UI. O cofre direto MUST permanecer intacto e utilizável pela versão restaurada. O agente MUST NOT ler os valores pessoais nem automatizar a exclusão. A mesma migração MUST NOT ser exigida em atualizações normais da interface com helper fixo.
+A passagem do dono direto ao helper MUST usar novo serviço/manifesto, preservando o cofre direto intacto e utilizável pela versão anterior. A transferência MUST estar disponível pela importação normal escolhida pelo usuário, sem detecção que force uma janela ou restrinja o primeiro acesso. O agente MUST NOT ler os valores pessoais nem automatizar a exclusão. A mesma transferência MUST NOT ser exigida em atualizações normais da interface com helper fixo.
 
 #### Scenario: Cancel the transfer
 
 - **WHEN** o usuário cancela a importação para o novo dono
-- **THEN** nenhum item antigo é alterado e a orientação continua disponível
+- **THEN** nenhum item antigo é alterado e o usuário pode escolher livremente outra ação no menu
 
 ### Requirement: Persistent local signing identity
 
@@ -64,9 +64,9 @@ O armazenamento MUST operar sem UI própria de Keychain. Recusa de confiança ou
 - **WHEN** uma leitura autorizada falha por acesso recusado
 - **THEN** a sessão é revogada, apresentações/prévias são limpas e ticks seguintes não repetem leituras ou prompts
 
-### Requirement: One time encrypted backup migration
+### Requirement: User initiated backup transfer
 
-A migração inicial escolhida pelo usuário MUST usar backup criptografado exportado na UI estável com as contas e contadores atuais. A nova identidade MUST usar um cofre separado e MUST NOT ler/apagar/reescrever os itens antigos. Havendo manifesto antigo e nenhum manifesto novo, o app MUST orientar a importação após autenticação em vez de apresentar um cofre vazio como concluído. Senha MUST ser fornecida somente no app, transitoriamente. Prévia e commit MUST preservar ordem, favoritos, parâmetros e próximo contador HOTP do arquivo, sem consumir códigos. Cancelamento ou falha MUST preservar o cofre antigo e manter a migração disponível.
+A transferência escolhida pelo usuário MUST usar o fluxo normal de importação de backups claros ou criptografados suportados. A nova identidade MUST usar um cofre separado e MUST NOT ler/apagar/reescrever os itens antigos. Primeiro acesso MUST apresentar o painel nativo vazio, sem onboarding obrigatório; cadastro manual e scanner MUST continuar disponíveis mesmo sem importar. Senha de backup, quando necessária, MUST ser fornecida somente no app, transitoriamente. Prévia e commit MUST preservar ordem, favoritos, parâmetros e próximo contador HOTP do arquivo, sem consumir códigos. Cancelamento ou falha MUST preservar o cofre antigo e permitir escolher outra ação.
 
 #### Scenario: Import the latest encrypted stable backup
 
@@ -76,9 +76,9 @@ A migração inicial escolhida pelo usuário MUST usar backup criptografado expo
 #### Scenario: Cancel or fail before commit
 
 - **WHEN** seleção, senha ou gravação não é concluída
-- **THEN** a orientação continua disponível e nenhum sucesso de migração é declarado
+- **THEN** nenhum sucesso é declarado, os cofres confirmados permanecem preservados e as ações normais continuam disponíveis
 
 #### Scenario: HOTP after the export
 
 - **WHEN** o usuário prepara a migração
-- **THEN** a interface orienta usar o backup mais recente e não consumir novos códigos na versão antiga depois de exportar, pois os cofres não sincronizam contadores
+- **THEN** os contadores do arquivo são preservados sem consumir códigos; as orientações de recuperação explicam usar o backup mais recente e não consumir novos códigos na versão antiga depois de exportar, pois os cofres não sincronizam contadores

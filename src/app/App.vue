@@ -28,9 +28,7 @@ const status = ref<VaultStatus>({ phase: 'locked', epoch: '0' });
 const accounts = ref<AccountSummary[]>([]);
 const codes = ref<Code[]>([]);
 const search = ref('');
-const view = ref<
-  'list' | 'account' | 'import' | 'export' | 'general' | 'migration'
->('list');
+const view = ref<'list' | 'account' | 'import' | 'export' | 'general'>('list');
 const editing = ref<AccountSummary | null>(null);
 const preview = ref<ImportPreview | null>(null);
 const busy = ref(false);
@@ -184,12 +182,7 @@ async function applyPendingRoute() {
   resetForm.value?.clearSensitive();
   const ticket = generation;
   try {
-    if (
-      request.route === 'migration' ||
-      (status.value.legacyMigrationRequired && request.route !== 'import')
-    )
-      view.value = 'migration';
-    else if (request.route === 'general') view.value = 'general';
+    if (request.route === 'general') view.value = 'general';
     else if (request.route === 'accounts') view.value = 'list';
     else if (request.route === 'new-account') edit(null);
     else if (request.route === 'export') view.value = 'export';
@@ -238,8 +231,6 @@ async function sync() {
   if (ticket !== generation || !visible.value) return;
   if (value.epoch !== status.value.epoch || value.phase === 'locked') clear();
   status.value = value;
-  if (value.legacyMigrationRequired && view.value === 'list')
-    view.value = 'migration';
   if (value.phase === 'unlocked') await refresh();
 }
 async function action(work: (current: () => boolean) => Promise<void>) {
@@ -279,7 +270,6 @@ async function unlock() {
       const value = await api.unlock();
       if (current()) {
         status.value = value;
-        if (value.legacyMigrationRequired) view.value = 'migration';
         await refresh();
       }
     } catch (e) {
@@ -448,7 +438,7 @@ async function commit(ids: string[], acknowledge: boolean) {
       const value = await api.status();
       if (!current()) return;
       status.value = value;
-      view.value = value.legacyMigrationRequired ? 'migration' : 'list';
+      view.value = 'list';
       await refresh();
       if (current()) notice.value = 'Contas importadas.';
     }
@@ -458,7 +448,7 @@ async function cancelImport() {
   const epoch = status.value.epoch;
   generation++;
   preview.value = null;
-  view.value = status.value.legacyMigrationRequired ? 'migration' : 'list';
+  view.value = 'list';
   busy.value = false;
   try {
     await api.cancel(epoch);
@@ -636,11 +626,7 @@ onBeforeUnmount(() => {
       ><span v-else class="hint">2FA no seu Mac</span>
     </header>
     <nav
-      v-if="
-        status.phase === 'unlocked' &&
-        !scanning &&
-        !status.legacyMigrationRequired
-      "
+      v-if="status.phase === 'unlocked' && !scanning"
       aria-label="Gerenciamento"
     >
       <button
@@ -691,33 +677,6 @@ onBeforeUnmount(() => {
     <section v-else-if="scanning" class="empty" role="status">
       <h2>Escaneando QR Code</h2>
       <p>Selecione uma área da tela. Escape cancela a seleção.</p>
-    </section>
-    <section v-else-if="view === 'migration'" class="settings">
-      <h2>Traga suas contas para esta versão</h2>
-      <p>
-        Seu cofre anterior está preservado. Importe o backup criptografado
-        exportado pelo TopOTP estável para continuar usando suas contas aqui.
-      </p>
-      <ol>
-        <li>
-          Na versão estável, exporte todas as contas em um backup com senha.
-        </li>
-        <li>
-          Escolha esse arquivo aqui e digite a senha somente no aplicativo.
-        </li>
-        <li>Revise e selecione todas as contas antes de confirmar.</li>
-      </ol>
-      <p>
-        Para contas HOTP, use o backup mais recente e não gere novos códigos na
-        versão anterior após exportar: o próximo contador vem desse arquivo.
-      </p>
-      <button class="primary" :disabled="busy" @click="beginImport">
-        Importar backup criptografado
-      </button>
-      <p class="hint">
-        A importação não apaga o cofre anterior. Após conferir suas contas,
-        mantenha o backup em um local seguro.
-      </p>
     </section>
     <section v-else-if="view === 'general'" class="settings">
       <h2>Configurações</h2>
