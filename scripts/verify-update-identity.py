@@ -41,6 +41,34 @@ def accepts(app: Path, requirement: str) -> bool:
     return result.returncode == 0
 
 
+def code_hash(path: Path) -> str:
+    result = subprocess.run(["codesign", "-dvvv", str(path)], capture_output=True, text=True, check=True)
+    return re.search(r"^CDHash=([a-f0-9]{40})$", result.stderr, re.MULTILINE).group(1)
+
+
+def keychain_owner(app: Path) -> dict:
+    resources = app / "Contents/Resources"
+    helper, metadata = resources / "vault-helper", resources / "vault-helper.json"
+    if not helper.exists() and not metadata.exists():
+        return {"kind": "direct", "cdhash": code_hash(app)}
+    value = json.loads(metadata.read_text())
+    if value.get("version") != 1 or value.get("identifier") != "com.rafaelmariano.topotp.vault-helper.v1":
+        raise ValueError("Metadados de helper não suportados")
+    actual = code_hash(helper)
+    if actual != value["cdhash"]:
+        raise ValueError("Helper diverge dos metadados fixados")
+    subprocess.run(["codesign", "--verify", "--strict", "-R=identifier \""
+                    + value["identifier"] + "\" and certificate leaf = H\""
+                    + value["certificateSHA1"] + "\"", str(helper)], check=True, capture_output=True)
+    subprocess.run(["codesign", "--verify", "--strict", "-R=certificate leaf = H\""
+                    + value["certificateSHA1"] + "\"", str(app)], check=True, capture_output=True)
+    info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+    binary = (app / "Contents/MacOS" / info["CFBundleExecutable"]).read_bytes()
+    if actual.encode() not in binary or value["certificateSHA1"].encode() not in binary:
+        raise ValueError("O executável não contém os pins do helper empacotado")
+    return {"kind": "helper-v1", "cdhash": actual, "target": value["target"]}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("previous", type=Path)
@@ -51,17 +79,25 @@ def main() -> int:
     candidate_id, candidate_requirement = inspect(candidate)
     forward = accepts(candidate, previous_requirement)
     backward = accepts(previous, candidate_requirement)
-    compatible = previous_id == candidate_id and forward and backward
+    signed_compatible = previous_id == candidate_id and forward and backward
+    old_owner, new_owner = keychain_owner(previous), keychain_owner(candidate)
+    owner_compatible = old_owner == new_owner
+    compatible = signed_compatible and owner_compatible
     print(json.dumps({
         "previous": str(previous), "candidate": str(candidate),
         "previousRequirement": previous_requirement,
         "candidateRequirement": candidate_requirement,
         "candidateSatisfiesPreviousIdentity": forward,
         "previousSatisfiesCandidateIdentity": backward,
-        "signedIdentityCompatible": compatible,
+        "signedIdentityCompatible": signed_compatible,
+        "previousKeychainOwner": old_owner,
+        "candidateKeychainOwner": new_owner,
+        "keychainOwnerCompatible": owner_compatible,
+        "normalUpdateCompatible": compatible,
+        "migrationRequired": not owner_compatible,
         "keychainAccessTested": False,
         "result": "Preflight aprovado; validar upgrade com cofre sintético."
-        if compatible else "Atualização bloqueada: identidades de assinatura incompatíveis.",
+        if compatible else "Atualização normal bloqueada: identidade ou dono da partição do Keychain incompatível. Uma migração explícita é um fluxo separado.",
     }, ensure_ascii=False, indent=2))
     return 0 if compatible else 1
 

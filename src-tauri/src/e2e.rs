@@ -50,11 +50,35 @@ pub fn root() -> std::path::PathBuf {
 }
 pub fn core() -> AppResult<Core> {
     let root = root().join("vault");
-    if root.exists() {
+    let real_store = std::env::var("TOPOTP_E2E_REAL_STORE").as_deref() == Ok("1");
+    let store: Box<dyn Store> = if real_store {
+        let value = std::env::var("TOPOTP_E2E_HELPER")
+            .map_err(|_| crate::domain::AppError::VaultServiceUnavailable)?;
+        let metadata: serde_json::Value = serde_json::from_str(&value)
+            .map_err(|_| crate::domain::AppError::VaultServiceUnavailable)?;
+        Box::new(crate::platform::macos::vault_helper::HelperStore::connect(
+            std::path::Path::new(metadata["binary"].as_str().unwrap()),
+            metadata["cdhash"].as_str().unwrap(),
+            metadata["certificateSHA1"].as_str().unwrap(),
+        )?)
+    } else {
+        Box::new(SyntheticStore(HashMap::new()))
+    };
+    let store = if real_store {
+        // This feature is debug-only and the signed .e2e peer has a separate
+        // Keychain namespace. Clear only its previous public fixture references.
+        let mut previous =
+            crate::application::vault::Vault::open(store, DiskIndex::new(root.clone())?)?;
+        previous.remove_all()?;
+        previous.store
+    } else {
+        store
+    };
+    if !real_store && root.exists() {
         std::fs::remove_dir_all(&root).map_err(|_| crate::domain::AppError::StorageUnavailable)?;
     }
     Core::new(
-        Box::new(SyntheticStore(HashMap::new())),
+        store,
         DiskIndex::new(root)?,
         Arc::new(SyntheticAuth),
         Arc::new(SyntheticClipboard),

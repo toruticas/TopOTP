@@ -204,6 +204,20 @@ impl<S: Store, I: Index> Vault<S, I> {
         records: Vec<(AccountRecord, bool)>,
         delete: &[Uuid],
     ) -> AppResult<()> {
+        self.commit_with_cleanup(records, delete, false)
+    }
+    /// Unlike an ordinary commit, erasure succeeds only after secret cleanup.
+    /// A failed cleanup retains the journal for the next authenticated recovery.
+    pub fn remove_all(&mut self) -> AppResult<()> {
+        let ids: Vec<_> = self.references.iter().map(|r| r.id).collect();
+        self.commit_with_cleanup(vec![], &ids, true)
+    }
+    fn commit_with_cleanup(
+        &mut self,
+        records: Vec<(AccountRecord, bool)>,
+        delete: &[Uuid],
+        require_cleanup: bool,
+    ) -> AppResult<()> {
         self.recover()?;
         let mut next = self.references.clone();
         let mut retired = Vec::new();
@@ -274,10 +288,11 @@ impl<S: Store, I: Index> Vault<S, I> {
             }
         }
         self.references = next;
-        // Manifest is committed. Cleanup failure keeps the recovery journal;
-        // never report the durable commit as failed or roll back confirmed data.
-        let _ = self.recover();
-        Ok(())
+        // Ordinary writes are durable even if cleanup fails. Explicit erasure
+        // additionally requires secret cleanup; either path retains the journal
+        // on failure and never rolls back a committed manifest.
+        let cleanup = self.recover();
+        if require_cleanup { cleanup } else { Ok(()) }
     }
     pub fn order(&mut self, ids: &[Uuid], pinned: &[Uuid]) -> AppResult<()> {
         if ids.len() != self.references.len()
@@ -352,6 +367,7 @@ mod tests {
         fail_insert: Option<usize>,
         fail_manifest: bool,
         fail_update: bool,
+        fail_journal_remove: bool,
     }
     struct MemoryStore(Arc<Mutex<State>>);
     struct MemoryIndex(Arc<Mutex<State>>);
@@ -401,7 +417,11 @@ mod tests {
             Ok(())
         }
         fn remove(&mut self, name: &str) -> AppResult<()> {
-            self.0.lock().unwrap().files.remove(name);
+            let mut s = self.0.lock().unwrap();
+            if name == "journal.json" && s.fail_journal_remove {
+                return Err(AppError::StorageUnavailable);
+            }
+            s.files.remove(name);
             Ok(())
         }
     }
@@ -479,5 +499,45 @@ mod tests {
             assert!(!text.contains("GEZDG"));
             assert!(!text.contains("counter"));
         }
+    }
+    #[test]
+    fn removal_keeps_accounts_when_empty_manifest_cannot_be_committed() {
+        let state = Arc::new(Mutex::new(State::default()));
+        let mut v = open(&state);
+        v.commit(vec![(record("preserved"), true)], &[]).unwrap();
+        state.lock().unwrap().fail_manifest = true;
+        assert!(v.remove_all().is_err());
+        assert_eq!(v.summaries().unwrap().len(), 1);
+        assert_eq!(state.lock().unwrap().data.len(), 1);
+        state.lock().unwrap().fail_manifest = false;
+        drop(v);
+        let mut v = open(&state);
+        v.recover().unwrap();
+        assert_eq!(v.summaries().unwrap().len(), 1);
+        v.remove_all().unwrap();
+        assert!(state.lock().unwrap().data.is_empty());
+    }
+    #[test]
+    fn removal_cleans_staged_orphans_and_requires_journal_cleanup_to_succeed() {
+        let state = Arc::new(Mutex::new(State::default()));
+        let mut v = open(&state);
+        v.commit(vec![(record("current"), false)], &[]).unwrap();
+        state.lock().unwrap().fail_insert = Some(3);
+        assert!(
+            v.commit(
+                vec![(record("orphan"), false), (record("failed"), false)],
+                &[]
+            )
+            .is_err()
+        );
+        assert_eq!(state.lock().unwrap().data.len(), 2);
+        v.remove_all().unwrap();
+        assert!(state.lock().unwrap().data.is_empty());
+        state.lock().unwrap().fail_journal_remove = true;
+        assert!(v.remove_all().is_err());
+        assert!(state.lock().unwrap().files.contains_key("journal.json"));
+        state.lock().unwrap().fail_journal_remove = false;
+        v.recover().unwrap();
+        assert!(v.references().is_empty());
     }
 }

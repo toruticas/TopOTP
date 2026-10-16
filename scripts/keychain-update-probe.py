@@ -33,7 +33,8 @@ def main():
     os.umask(0o077)
     OUTPUT.mkdir(parents=True, exist_ok=True)
     report = {"syntheticOnly": True, "realVaultTouched": False, "keychainUIAllowed": False,
-              "appleAccountUsed": False, "globalTrustSettingsChanged": False, "touchIDTested": False}
+              "appleAccountUsed": False, "globalTrustSettingsChanged": False, "touchIDTested": False,
+              "keychainDomain": "disposable-custom", "qualifiesDefaultLogin": False}
     with tempfile.TemporaryDirectory(prefix="run-", dir=OUTPUT) as directory:
         folder = Path(directory)
         folder.chmod(0o700)

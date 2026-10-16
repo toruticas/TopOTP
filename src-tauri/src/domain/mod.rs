@@ -17,9 +17,13 @@ pub enum AppError {
     #[error("Armazenamento seguro indisponível")]
     StorageUnavailable,
     #[error(
-        "Esta versão não tem acesso autorizado ao Keychain. Atualize a identidade do cofre pela migração; nenhuma senha será solicitada automaticamente"
+        "O macOS recusou o acesso ao Keychain deste cofre. Os dados continuam preservados; nenhuma solicitação de senha será repetida automaticamente"
     )]
     KeychainAccessDenied,
+    #[error(
+        "O componente de segurança do cofre está indisponível ou é incompatível; o acesso foi interrompido"
+    )]
+    VaultServiceUnavailable,
     #[error("Conta não encontrada")]
     NotFound,
     #[error("Contador esgotado")]

@@ -1,7 +1,16 @@
 import { browser, $, $$, expect } from '@wdio/globals';
-import { readFile, copyFile, mkdir, rm, stat } from 'node:fs/promises';
+import {
+  readFile,
+  writeFile,
+  copyFile,
+  mkdir,
+  rm,
+  stat,
+} from 'node:fs/promises';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { loadReference } from '../compatibility/reference.mjs';
 import { verifyInOriginal } from '../compatibility/roundtrip.mjs';
 
@@ -54,6 +63,7 @@ async function clearSyntheticVault() {
   assert.equal(result, 'cleared');
   await $('button=Bloquear').click();
   await $('button=Desbloquear').click();
+  await $('button=Contas').click();
   await expect($('button=Adicionar conta')).toBeDisplayed();
   assert.equal((await $$('.account-card')).length, 0);
 }
@@ -227,6 +237,27 @@ describe('TopOTP transfer interoperability with synthetic native adapters', () =
     await exportBackup(false);
   });
 
+  it('keeps the management window onscreen when another application takes focus', async function () {
+    await $('button=Geral').click();
+    const { stdout } = await promisify(execFile)('/usr/bin/swift', [
+      resolve('scripts/management-window-probe.swift'),
+      resolve('.artifacts/e2e-target/debug/topotp'),
+    ]);
+    const result = JSON.parse(stdout.trim());
+    await writeFile(
+      resolve(artifacts, 'management-window-focus.json'),
+      JSON.stringify(result, null, 2),
+    );
+    if (result.activeApplication === 'com.apple.loginwindow') this.skip();
+    assert.equal(result.targetWasActive, true, JSON.stringify(result));
+    assert.equal(result.otherAppActive, true, JSON.stringify(result));
+    assert.equal(result.managementStayedOnscreen, true, JSON.stringify(result));
+    await expect($('h2=Configurações')).toBeDisplayed();
+    await browser.keys('Escape');
+    await expect($('h2=Configurações')).toBeDisplayed();
+    await $('button=Contas').click();
+  });
+
   it('imports original v3 with multiple keys, rejects wrong passwords and cancels', async () => {
     await clearSyntheticVault();
     await beginImport('tests/fixtures/authenticator-v3.json');
@@ -311,5 +342,45 @@ describe('TopOTP transfer interoperability with synthetic native adapters', () =
     });
     assert.match(denied, /not allowed|denied/);
     await browser.saveScreenshot(resolve(artifacts, 'locked.png'));
+  });
+
+  it('cancels then confirms removal of all synthetic vault data through settings', async () => {
+    await $('button=Desbloquear').click();
+    const oldEpoch = await browser.executeAsync((done) => {
+      globalThis.__TAURI_INTERNALS__
+        .invoke('vault_status')
+        .then((status) => done(status.epoch));
+    });
+    await $('button=Geral').click();
+    await $('button=Remover todos os dados').click();
+    await expect($('button=Confirmar remoção')).toBeDisabled();
+    await $('.reset-vault input').setValue('REMOVER');
+    await $('.reset-vault').$('button=Cancelar').click();
+    assert.equal((await presentation()).accounts.length, 4);
+    await $('button=Remover todos os dados').click();
+    await $('.reset-vault input').setValue('REMOVER');
+    await $('button=Confirmar remoção').click();
+    await expect($('[role=status]')).toHaveText(
+      'Todos os dados deste cofre foram removidos.',
+    );
+    await expect($('button=Desbloquear')).toBeDisplayed();
+    const rejected = await browser.executeAsync((epoch, done) => {
+      globalThis.__TAURI_INTERNALS__.invoke('list_accounts', { epoch }).then(
+        () => done('allowed'),
+        (error) => done(error.code),
+      );
+    }, oldEpoch);
+    assert.equal(rejected, 'Locked');
+    await $('button=Desbloquear').click();
+    await expect($('h2=Configurações')).toBeDisplayed();
+    assert.equal((await presentation()).accounts.length, 0);
+    const manifest = JSON.parse(
+      await readFile(resolve(artifacts, 'vault/manifest.json'), 'utf8'),
+    );
+    assert.deepEqual(manifest.references, []);
+    await assert.rejects(stat(resolve(artifacts, 'vault/journal.json')), {
+      code: 'ENOENT',
+    });
+    await browser.saveScreenshot(resolve(artifacts, 'settings-empty.png'));
   });
 });

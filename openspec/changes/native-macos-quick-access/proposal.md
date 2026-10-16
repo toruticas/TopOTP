@@ -4,6 +4,8 @@ A beta atual funciona, mas concentra o acesso rápido a códigos e todos os form
 
 ## What Changes
 
+- Acrescentar remoção confirmada dos dados do cofre atual em Configurações e manter a janela de gerenciamento aberta ao perder foco, com fechamento controlado pelo usuário e bloqueio automático preservado.
+
 - Substituir a apresentação cotidiana do painel web por um painel AppKit ancorado no ícone, com controles nativos, lista compacta de contas, código/validade e aparência adaptada ao sistema.
 - Ao clicar no ícone com o cofre bloqueado, solicitar imediatamente Touch ID/senha do macOS uma única vez; apresentar a lista após sucesso. Cancelamento, expiração, notificações e atualização de códigos não disparam novas tentativas automaticamente.
 - Adicionar busca nativa por serviço/conta, navegação por teclado e cópia de TOTP ao acionar uma linha. Preservar geração HOTP explícita e incremento persistido antes de entregar o código.
@@ -11,7 +13,7 @@ A beta atual funciona, mas concentra o acesso rápido a códigos e todos os form
 - Abrir uma janela de gerenciamento independente, com navegação para contas, cadastro/edição, transferências e configurações. Reaproveitar Vue e os formulários existentes nessa janela; clicar fora dela não a oculta.
 - Introduzir leitura de QR por seleção de uma região da tela, conforme a escolha do usuário, com captura nativa e decodificação local. A conta passa por revisão antes da confirmação; imagem e URI secreta não são gravadas em arquivos temporários nem copiadas para o clipboard.
 - Reutilizar o core Rust, Keychain tradicional e adaptador estável de LocalAuthentication. Coordenar autorização, visibilidade, bloqueio e respostas assíncronas entre as duas superfícies sem mudar a política de autenticação.
-- Corrigir a continuidade de identidade entre builds com um certificado local persistente, sem conta Apple. O usuário escolheu migrar uma única vez por backup criptografado exportado pelo TopOTP estável; o novo cofre usa namespace próprio e preserva integralmente o antigo. Recusas do Keychain encerram a operação sem diálogos próprios de senha nem novas leituras automáticas.
+- Corrigir a continuidade com certificado local e dono fixo dos itens, sem conta Apple. Após comprovar que o login usa partições presas ao CDHash, acrescentar um helper imutável e transporte nativo privado; certificado sozinho não é prova de atualização compatível. A transferência entre donos usa backup pela UI e namespace próprio, preservando os anteriores. Recusas encerram a operação sem diálogos de senha do Keychain, reconexão ou leituras automáticas.
 - Ampliar testes de coordenação nativa, busca, HOTP, integração da janela e QR com dados sintéticos, registrando separadamente as verificações reais de hardware/permissões.
 
 ## Capabilities

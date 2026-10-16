@@ -40,6 +40,24 @@ assert not window["devtools"] and not window["create"] and not window["visible"]
 assert not capability.get("remote")
 assert all(p.startswith("allow-") or p in ["core:event:allow-listen", "core:event:allow-unlisten"] for p in capability["permissions"])
 report = {"bundle": str(app), "version": version, "bundleVersion": info["CFBundleVersion"], "architecture": architecture, "minimumMacOS": info["LSMinimumSystemVersion"], "signatureVerified": True, "signatureKind": "adhoc" if adhoc else "certificate", "designatedRequirement": requirement, "identityContinuityRequiresUpgradeTest": True, "testPluginMarkersAbsent": True, "embeddedNodeChromiumAbsent": True, "capabilityReviewed": True, "nativeAuthenticationManual": "pending", "notarized": False}
+helper = app / "Contents/Resources/vault-helper"
+metadata = app / "Contents/Resources/vault-helper.json"
+if not adhoc:
+    import re
+    assert helper.is_file() and metadata.is_file(), "Local production requires the fixed Keychain owner"
+    owner = json.loads(metadata.read_text())
+    assert owner["version"] == 1 and owner["identifier"] == "com.rafaelmariano.topotp.vault-helper.v1"
+    details = subprocess.run(["codesign", "-dvvv", str(helper)], check=True, capture_output=True, text=True)
+    actual = re.search(r"^CDHash=([a-f0-9]{40})$", details.stderr, re.MULTILINE).group(1)
+    assert actual == owner["cdhash"] and actual.encode() in data
+    assert owner["certificateSHA1"].encode() in data
+    assert owner["target"] == {"arm64": "aarch64-apple-darwin", "x86_64": "x86_64-apple-darwin"}[architecture]
+    subprocess.run(["codesign", "--verify", "--strict", "-R=identifier \"" + owner["identifier"] + "\" and certificate leaf = H\"" + owner["certificateSHA1"] + "\"", str(helper)], check=True, capture_output=True)
+    subprocess.run(["codesign", "--verify", "--strict", "-R=certificate leaf = H\"" + owner["certificateSHA1"] + "\"", str(app)], check=True, capture_output=True)
+    report["fixedKeychainOwner"] = {"cdhash": actual, "target": owner["target"], "version": owner["version"]}
+else:
+    report["vaultUseSupported"] = False
+    report["ciCompilationArtifactOnly"] = True
 folder = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(".artifacts")
 folder.mkdir(parents=True, exist_ok=True)
 path = folder / f"release-inspection-{architecture}.json"

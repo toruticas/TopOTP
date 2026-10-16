@@ -30,6 +30,11 @@ name = "quick-access-probe"
 path = "src/bin/quick_access_probe.rs"
 required-features = ["native-ui-probe"]
 
+[[bin]]
+name = "vault-helper-probe"
+path = "src/bin/vault_helper_probe.rs"
+required-features = ["native-probe"]
+
 [features]
 native-probe = []
 native-ui-probe = []

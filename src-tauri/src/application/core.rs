@@ -57,6 +57,7 @@ pub struct Core {
     dialogs: AtomicUsize,
     revocation: AtomicU64,
     legacy_migration: AtomicBool,
+    removing: AtomicBool,
 }
 impl Core {
     /// Shared native unlock path. The caller supplies intent, never approval.
@@ -102,6 +103,7 @@ impl Core {
             dialogs: AtomicUsize::new(0),
             revocation: AtomicU64::new(0),
             legacy_migration: AtomicBool::new(false),
+            removing: AtomicBool::new(false),
         })
     }
     pub fn now(&self) -> Duration {
@@ -206,9 +208,9 @@ impl Core {
         }
         let result = match work(&mut inner) {
             Ok(result) => result,
-            Err(AppError::KeychainAccessDenied) => {
+            Err(error @ (AppError::KeychainAccessDenied | AppError::VaultServiceUnavailable)) => {
                 self.revoke(&mut inner);
-                return Err(AppError::KeychainAccessDenied);
+                return Err(error);
             }
             Err(error) => return Err(error),
         };
@@ -289,6 +291,50 @@ impl Core {
             Ok(())
         })
     }
+    pub async fn remove_all(
+        self: &Arc<Self>,
+        epoch: String,
+        confirmation: String,
+    ) -> AppResult<VaultStatus> {
+        if confirmation != "REMOVER" {
+            return Err(AppError::invalid("removalConfirmation"));
+        }
+        self.authorized(&epoch, |_| Ok(()))?;
+        if self.removing.swap(true, Ordering::SeqCst) {
+            return Err(AppError::Conflict);
+        }
+        let _attempt = RemovalGuard(&self.removing);
+        let _dialog = self.dialog();
+        let proof = self
+            .auth
+            .authenticate("Remover permanentemente todos os dados deste cofre do TopOTP")
+            .await?;
+        let core = self.clone();
+        tauri::async_runtime::spawn_blocking(move || core.finish_removal(&epoch, proof))
+            .await
+            .map_err(|_| AppError::StorageUnavailable)?
+    }
+    fn finish_removal(&self, epoch: &str, _proof: NativeApproval) -> AppResult<VaultStatus> {
+        let revocation = self.revocation.load(Ordering::SeqCst);
+        let epoch = epoch.parse().map_err(|_| AppError::Locked)?;
+        let mut inner = self.guard()?;
+        if inner.session.expired(self.now()) {
+            self.revoke(&mut inner);
+        }
+        inner.session.check(epoch, self.now())?;
+        if revocation != self.revocation.load(Ordering::SeqCst) {
+            return Err(AppError::Locked);
+        }
+        // Keep erasure and revocation under the same lock. authorized() cannot
+        // wrap this operation because successful erasure invalidates its epoch.
+        let result = inner.vault.remove_all();
+        if inner.vault.references().is_empty() {
+            self.legacy_migration.store(false, Ordering::SeqCst);
+        }
+        self.revoke(&mut inner);
+        result?;
+        Ok(self.vault_status(&inner))
+    }
     pub fn totp(&self, epoch: &str) -> AppResult<Vec<Code>> {
         self.authorized(epoch, |i| {
             let now = self.clock.unix_seconds();
@@ -357,6 +403,12 @@ impl Core {
     }
 }
 pub struct DialogGuard<'a>(&'a Core);
+struct RemovalGuard<'a>(&'a AtomicBool);
+impl Drop for RemovalGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
 impl Drop for DialogGuard<'_> {
     fn drop(&mut self) {
         self.0.dialogs.fetch_sub(1, Ordering::SeqCst);

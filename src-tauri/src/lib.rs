@@ -1,6 +1,11 @@
 pub mod application;
 #[cfg(all(
-    any(feature = "e2e", feature = "native-ui-probe", feature = "native-smoke"),
+    any(
+        feature = "e2e",
+        feature = "native-ui-probe",
+        feature = "native-smoke",
+        feature = "native-probe"
+    ),
     not(debug_assertions)
 ))]
 compile_error!("Synthetic test features are forbidden in release builds");
@@ -45,15 +50,30 @@ pub fn run() {
                 return Err("native-smoke requires tauri.native-smoke.conf.json".into());
             }
             #[cfg(not(feature = "e2e"))]
+            let store: Box<dyn application::vault::Store> =
+                if !cfg!(debug_assertions) || cfg!(feature = "native-smoke") {
+                    match platform::macos::vault_helper::HelperStore::packaged(
+                        &app.path().resource_dir()?.join("vault-helper"),
+                    ) {
+                        Ok(store) => Box::new(store),
+                        Err(error) => {
+                            platform::macos::quick_access::error_message(&error.to_string());
+                            return Err(error.into());
+                        }
+                    }
+                } else {
+                    Box::new(platform::macos::keychain::Keychain::new(
+                        platform::macos::keychain_service().into(),
+                    )?)
+                };
+            #[cfg(not(feature = "e2e"))]
             let core = Arc::new(Core::new(
-                Box::new(platform::macos::keychain::Keychain::new(
-                    platform::macos::keychain_service().into(),
-                )?),
+                store,
                 application::vault::DiskIndex::new(app.path().app_data_dir()?.join(
-                    if cfg!(debug_assertions) {
-                        "dev-signed-v1"
+                    if !cfg!(debug_assertions) || cfg!(feature = "native-smoke") {
+                        "vault-broker-v1"
                     } else {
-                        "vault-signed-v1"
+                        "dev-signed-v1"
                     },
                 ))?,
                 Arc::new(platform::macos::auth::NativeAuthenticator::new()),
@@ -63,13 +83,14 @@ pub fn run() {
             #[cfg(not(any(feature = "e2e", feature = "native-smoke")))]
             {
                 let root = app.path().app_data_dir()?;
-                let (legacy, signed) = if cfg!(debug_assertions) {
-                    ("dev", "dev-signed-v1")
+                let (legacy, previous, current) = if cfg!(debug_assertions) {
+                    ("dev", "dev", "dev-signed-v1")
                 } else {
-                    ("vault", "vault-signed-v1")
+                    ("vault", "vault-signed-v1", "vault-broker-v1")
                 };
-                if root.join(legacy).join("manifest.json").is_file()
-                    && !root.join(signed).join("manifest.json").exists()
+                if (root.join(legacy).join("manifest.json").is_file()
+                    || root.join(previous).join("manifest.json").is_file())
+                    && !root.join(current).join("manifest.json").exists()
                 {
                     core.require_legacy_migration();
                 }
@@ -172,6 +193,7 @@ pub fn run() {
             commands::save_account,
             commands::preview_uri_account,
             commands::delete_account,
+            commands::remove_all_data,
             commands::generate_hotp,
             commands::copy_code,
             commands::set_account_order,

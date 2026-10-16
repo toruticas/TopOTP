@@ -23,6 +23,7 @@ import {
 import AccountForm from '../features/accounts/AccountForm.vue';
 import ImportForm from '../features/transfer/ImportForm.vue';
 import ExportForm from '../features/transfer/ExportForm.vue';
+import ResetVault from '../features/settings/ResetVault.vue';
 const status = ref<VaultStatus>({ phase: 'locked', epoch: '0' });
 const accounts = ref<AccountSummary[]>([]);
 const codes = ref<Code[]>([]);
@@ -45,11 +46,18 @@ const panelElement = ref<HTMLElement>();
 const accountForm = ref<InstanceType<typeof AccountForm>>();
 const importForm = ref<InstanceType<typeof ImportForm>>();
 const exportForm = ref<InstanceType<typeof ExportForm>>();
+const resetForm = ref<InstanceType<typeof ResetVault>>();
+const resetEpoch = ref<string | null>(null);
+const removalError = ref<{ epoch: string; message: string } | null>(null);
+const displayError = computed(
+  () =>
+    error.value ||
+    (removalError.value?.epoch === status.value.epoch
+      ? removalError.value.message
+      : ''),
+);
 const now = ref(Date.now() / 1000);
-const resumeWindowMs = 30_000;
-let hiddenAt: number | null = null;
 let hiddenEpoch: string | null = null;
-let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 let savedScroll = { top: 0, left: 0 };
 let savedFocus: HTMLElement | null = null;
 let visibilityGeneration = 0;
@@ -68,9 +76,6 @@ const filtered = computed(() =>
     .sort((a, b) => Number(b.pinned) - Number(a.pinned)),
 );
 function clear() {
-  if (resumeTimer) clearTimeout(resumeTimer);
-  resumeTimer = undefined;
-  hiddenAt = null;
   hiddenEpoch = null;
   savedScroll = { top: 0, left: 0 };
   savedFocus = null;
@@ -80,7 +85,8 @@ function clear() {
   search.value = '';
   editing.value = null;
   preview.value = null;
-  view.value = 'list';
+  view.value = view.value === 'general' ? 'general' : 'list';
+  resetForm.value?.clearSensitive();
   busy.value = false;
   error.value = '';
   notice.value = '';
@@ -89,8 +95,7 @@ function clear() {
 }
 function canResume() {
   return (
-    hiddenAt !== null &&
-    performance.now() - hiddenAt < resumeWindowMs &&
+    hiddenEpoch !== null &&
     hiddenEpoch === status.value.epoch &&
     status.value.phase === 'unlocked'
   );
@@ -108,27 +113,25 @@ function hidePresentation() {
   accountForm.value?.clearSensitive();
   importForm.value?.clearSensitive();
   exportForm.value?.clearSensitive();
+  resetForm.value?.clearSensitive();
   visible.value = false;
   codes.value = [];
   if (status.value.phase !== 'unlocked') {
     clear();
     return;
   }
-  hiddenAt = performance.now();
   hiddenEpoch = status.value.epoch;
-  resumeTimer = setTimeout(() => {
-    clear();
-    status.value.phase = 'locked';
-  }, resumeWindowMs);
 }
 async function showPresentation() {
+  if (visible.value) {
+    await sync();
+    return;
+  }
   const request = ++visibilityGeneration;
   const resume = canResume();
   const scroll = resume ? savedScroll : { top: 0, left: 0 };
   const focus = resume ? savedFocus : null;
   const epoch = hiddenEpoch;
-  if (resumeTimer) clearTimeout(resumeTimer);
-  resumeTimer = undefined;
   restoring.value = true;
   visible.value = true;
   if (!resume) clear();
@@ -139,7 +142,6 @@ async function showPresentation() {
       resume &&
       status.value.phase === 'unlocked' &&
       status.value.epoch === epoch;
-    hiddenAt = null;
     hiddenEpoch = null;
     savedFocus = null;
     restoring.value = false;
@@ -179,6 +181,7 @@ async function applyPendingRoute() {
   accountForm.value?.clearSensitive();
   importForm.value?.clearSensitive();
   exportForm.value?.clearSensitive();
+  resetForm.value?.clearSensitive();
   const ticket = generation;
   try {
     if (
@@ -245,6 +248,7 @@ async function action(work: (current: () => boolean) => Promise<void>) {
   const current = () => ticket === generation && (visible.value || canResume());
   busy.value = true;
   error.value = '';
+  removalError.value = null;
   notice.value = '';
   progress.value = '';
   try {
@@ -267,6 +271,8 @@ async function action(work: (current: () => boolean) => Promise<void>) {
   }
 }
 async function unlock() {
+  resetEpoch.value = null;
+  removalError.value = null;
   await action(async (current) => {
     status.value.phase = 'unlocking';
     try {
@@ -327,6 +333,49 @@ async function remove() {
       await refresh();
     }
   });
+}
+async function removeAll(confirmation: string) {
+  if (busy.value) return;
+  const epoch = status.value.epoch;
+  busy.value = true;
+  error.value = '';
+  removalError.value = null;
+  try {
+    const value = await api.removeAll(epoch, confirmation);
+    if (disposed) return;
+    resetEpoch.value = value.epoch;
+    const latest = await api.status();
+    if (
+      !disposed &&
+      latest.phase === 'locked' &&
+      latest.epoch === value.epoch
+    ) {
+      clear();
+      status.value = latest;
+    }
+  } catch (e) {
+    if (disposed) return;
+    const latest = await api
+      .status()
+      .catch(() => ({ phase: 'locked' as const, epoch: status.value.epoch }));
+    if (disposed || (latest.phase === 'unlocked' && latest.epoch !== epoch))
+      return;
+    const code =
+      typeof e === 'object' && e !== null && 'code' in e ? e.code : '';
+    if (latest.phase === 'locked') clear();
+    status.value = latest;
+    removalError.value = {
+      epoch: latest.epoch,
+      message:
+        code === 'StorageUnavailable' ||
+        code === 'KeychainAccessDenied' ||
+        code === 'VaultServiceUnavailable'
+          ? 'A remoção não foi concluída. Alguns dados podem já ter sido removidos. Desbloqueie e confira o cofre antes de tentar novamente.'
+          : errorMessage(e),
+    };
+  } finally {
+    if (!disposed) busy.value = false;
+  }
 }
 async function next(id: string) {
   await action(async (current) => {
@@ -571,7 +620,6 @@ onBeforeUnmount(() => {
     class="panel management"
     @pointerdown="interact"
     @keydown="interact"
-    @keydown.esc.prevent="api.hide()"
   >
     <header>
       <div class="brand">
@@ -615,7 +663,9 @@ onBeforeUnmount(() => {
         Exportar
       </button>
     </nav>
-    <p v-if="error" class="message error" role="alert">{{ error }}</p>
+    <p v-if="displayError" class="message error" role="alert">
+      {{ displayError }}
+    </p>
     <p v-if="notice" class="message" role="status">{{ notice }}</p>
     <section
       v-if="status.phase !== 'unlocked'"
@@ -624,6 +674,9 @@ onBeforeUnmount(() => {
     >
       <div class="vault-mark" aria-hidden="true">◇</div>
       <h2 id="vault-heading">Seu cofre, protegido</h2>
+      <p v-if="resetEpoch === status.epoch" role="status">
+        Todos os dados deste cofre foram removidos.
+      </p>
       <p>Seus códigos, a um toque de distância.</p>
       <button
         class="primary"
@@ -687,6 +740,7 @@ onBeforeUnmount(() => {
         Use Contas para organizar suas entradas e Importar/Exportar para
         transferir backups do Authenticator.
       </p>
+      <ResetVault ref="resetForm" :busy="busy" @remove="removeAll" />
     </section>
     <template v-else-if="view === 'list'">
       <label class="search"

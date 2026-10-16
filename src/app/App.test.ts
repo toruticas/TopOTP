@@ -54,6 +54,101 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('vault presentation boundaries', () => {
+  it('keeps settings on blur, Escape, repeated show and session reauthentication', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'general',
+      epoch: '2',
+    });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('main').trigger('blur');
+    window.dispatchEvent(new Event('blur'));
+    await wrapper.get('main').trigger('keydown', { key: 'Escape' });
+    listeners.get('panel-shown')?.();
+    await flushPromises();
+    expect(wrapper.get('main').isVisible()).toBe(true);
+    expect(wrapper.get('h2').text()).toBe('Configurações');
+    expect(api.hide).not.toHaveBeenCalled();
+    expect(api.unlock).not.toHaveBeenCalled();
+    vi.mocked(api.status).mockResolvedValue({ phase: 'locked', epoch: '3' });
+    listeners.get('vault-changed')?.();
+    await flushPromises();
+    expect(wrapper.get('main').isVisible()).toBe(true);
+    expect(wrapper.text()).toContain('Desbloquear');
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '4' });
+    vi.mocked(api.unlock).mockResolvedValue({ phase: 'unlocked', epoch: '4' });
+    await wrapper.get('button.primary').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe('Configurações');
+  });
+  it('removes through settings and reflects revocation before the command finishes', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'general',
+      epoch: '2',
+    });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    vi.mocked(api.removeAll).mockImplementation(async () => {
+      vi.mocked(api.status).mockResolvedValue({ phase: 'locked', epoch: '3' });
+      listeners.get('vault-changed')?.();
+      await flushPromises();
+      return { phase: 'locked', epoch: '3' };
+    });
+    await wrapper.get('.reset-vault button').trigger('click');
+    await wrapper.get('.reset-vault input').setValue('REMOVER');
+    await wrapper.get('.reset-vault form').trigger('submit');
+    await flushPromises();
+    expect(api.removeAll).toHaveBeenCalledExactlyOnceWith('2', 'REMOVER');
+    expect(wrapper.text()).toContain(
+      'Todos os dados deste cofre foram removidos.',
+    );
+    expect(wrapper.text()).not.toContain(account.account);
+    expect(wrapper.get('main').isVisible()).toBe(true);
+  });
+  it('keeps cancellation harmless and reports a partial removal failure after revocation', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
+    vi.mocked(api.managementReady).mockResolvedValueOnce({
+      route: 'general',
+      epoch: '2',
+    });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    const submit = async () => {
+      if (!wrapper!.find('.reset-vault input').exists())
+        await wrapper!.get('.reset-vault button').trigger('click');
+      await wrapper!.get('.reset-vault input').setValue('REMOVER');
+      await wrapper!.get('.reset-vault form').trigger('submit');
+      await flushPromises();
+    };
+    vi.mocked(api.removeAll).mockRejectedValueOnce({ code: 'Cancelled' });
+    await submit();
+    expect(wrapper.get('[role=alert]').text()).toBe('Operação cancelada.');
+    expect(wrapper.get('h2').text()).toBe('Configurações');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Contas')!
+      .trigger('click');
+    expect(wrapper.find('.account-card').text()).toContain(account.account);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Geral')!
+      .trigger('click');
+    vi.mocked(api.removeAll).mockImplementationOnce(async () => {
+      vi.mocked(api.status).mockResolvedValue({ phase: 'locked', epoch: '3' });
+      listeners.get('vault-changed')?.();
+      await flushPromises();
+      throw { code: 'StorageUnavailable' };
+    });
+    await submit();
+    expect(wrapper.get('[role=alert]').text()).toContain(
+      'remoção não foi concluída',
+    );
+    expect(wrapper.text()).not.toContain(
+      'Todos os dados deste cofre foram removidos.',
+    );
+  });
   it('offers backup migration instead of an empty vault and resumes it after cancellation', async () => {
     const migration: VaultStatus = {
       phase: 'unlocked',
@@ -352,7 +447,7 @@ describe('vault presentation boundaries', () => {
     expect(scroll.scrollTop).toBe(160);
     expect(document.activeElement).toBe(inputs[1]!.element);
   });
-  it('expires the hidden draft at 30 seconds without extending it on repeated hides', async () => {
+  it('uses native authorization on restore instead of a web 30 second deadline', async () => {
     vi.useFakeTimers({
       toFake: [
         'setTimeout',
@@ -373,7 +468,7 @@ describe('vault presentation boundaries', () => {
     await vi.advanceTimersByTimeAsync(20_000);
     listeners.get('panel-hidden')?.();
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(wrapper.findComponent(AccountForm).exists()).toBe(false);
+    expect(wrapper.findComponent(AccountForm).exists()).toBe(true);
     vi.mocked(api.status).mockResolvedValue({ phase: 'locked', epoch: '3' });
     listeners.get('panel-shown')?.();
     await flushPromises();

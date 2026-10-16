@@ -25,6 +25,8 @@ export const api = {
     invoke<ImportPreview>('preview_uri_account', { epoch, uri }),
   delete: (epoch: string, accountId: string) =>
     invoke<void>('delete_account', { epoch, accountId }),
+  removeAll: (epoch: string, confirmation: string) =>
+    invoke<VaultStatus>('remove_all_data', { epoch, confirmation }),
   next: (epoch: string, accountId: string) =>
     invoke<Code>('generate_hotp', { epoch, accountId }),
   copy: (epoch: string, accountId: string) =>
@@ -88,7 +90,9 @@ export function errorMessage(error: unknown): string {
     StorageUnavailable:
       'Não foi possível acessar o Keychain ou gravar o arquivo.',
     KeychainAccessDenied:
-      'Esta versão não tem acesso ao Keychain deste cofre. Conclua a migração da identidade; a leitura foi interrompida sem solicitar senhas.',
+      'O macOS recusou o acesso ao Keychain deste cofre. Seus dados continuam preservados; nenhuma solicitação de senha será repetida automaticamente.',
+    VaultServiceUnavailable:
+      'O componente de segurança do cofre está indisponível ou é incompatível. O cofre foi bloqueado; reinicie com uma versão compatível.',
     NotFound: 'Conta ou prévia não encontrada.',
     CounterExhausted: 'O contador atingiu o limite suportado.',
     InvalidPassword: 'Senha do backup incorreta.',

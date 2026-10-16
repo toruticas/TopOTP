@@ -21,12 +21,18 @@ struct Data {
     fail_update: bool,
     fail_insert: bool,
     deny_read: bool,
+    transport_failed: bool,
+    deletes: usize,
+    fail_delete: Option<usize>,
 }
 struct Storage(Arc<Mutex<Data>>);
 impl Store for Storage {
     fn read(&self, id: Uuid) -> AppResult<Option<Zeroizing<Vec<u8>>>> {
         let s = self.0.lock().unwrap();
         s.reads.fetch_add(1, Ordering::SeqCst);
+        if s.transport_failed {
+            return Err(AppError::VaultServiceUnavailable);
+        }
         if s.deny_read {
             return Err(AppError::KeychainAccessDenied);
         }
@@ -48,7 +54,12 @@ impl Store for Storage {
         Ok(())
     }
     fn delete(&mut self, id: Uuid) -> AppResult<()> {
-        self.0.lock().unwrap().records.remove(&id);
+        let mut s = self.0.lock().unwrap();
+        s.deletes += 1;
+        if s.fail_delete == Some(s.deletes) {
+            return Err(AppError::StorageUnavailable);
+        }
+        s.records.remove(&id);
         Ok(())
     }
 }
@@ -62,12 +73,15 @@ impl Authentication for Auth {
     }
     fn cancel(&self) {}
 }
-struct Clip;
+#[derive(Default)]
+struct Clip(AtomicUsize);
 impl Clipboard for Clip {
     fn copy(&self, _: &str) -> AppResult<i64> {
         Ok(1)
     }
-    fn clear_if_owned(&self, _: i64) {}
+    fn clear_if_owned(&self, _: i64) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
 }
 #[derive(Default)]
 struct FakeClock(AtomicU64);
@@ -83,6 +97,7 @@ struct Fixture {
     core: Arc<Core>,
     data: Arc<Mutex<Data>>,
     clock: Arc<FakeClock>,
+    clip: Arc<Clip>,
     root: std::path::PathBuf,
 }
 impl Fixture {
@@ -92,13 +107,14 @@ impl Fixture {
     fn with_auth(auth: Arc<dyn Authentication>) -> Self {
         let data = Arc::new(Mutex::new(Data::default()));
         let clock = Arc::new(FakeClock::default());
+        let clip = Arc::new(Clip::default());
         let root = std::env::temp_dir().join(format!("topotp-synthetic-{}", Uuid::new_v4()));
         let core = Arc::new(
             Core::new(
                 Box::new(Storage(data.clone())),
                 DiskIndex::new(root.clone()).unwrap(),
                 auth,
-                Arc::new(Clip),
+                clip.clone(),
                 clock.clone(),
             )
             .unwrap(),
@@ -107,6 +123,7 @@ impl Fixture {
             core,
             data,
             clock,
+            clip,
             root,
         }
     }
@@ -637,6 +654,194 @@ struct DeferredAuth {
     entered: std::sync::mpsc::Sender<()>,
     result: Mutex<Option<std::sync::mpsc::Receiver<AppResult<NativeApproval>>>>,
     attempts: AtomicUsize,
+}
+struct RemovalAuth(AtomicUsize);
+#[test]
+fn helper_failure_revokes_session_and_never_retries_on_ticks() {
+    let f = Fixture::new();
+    let epoch = f.unlock();
+    seed_removal(&f, &epoch);
+    f.data.lock().unwrap().transport_failed = true;
+    assert!(matches!(
+        f.core.list(&epoch),
+        Err(AppError::VaultServiceUnavailable)
+    ));
+    let reads = f.data.lock().unwrap().reads.load(Ordering::SeqCst);
+    for _ in 0..20 {
+        f.core.tick();
+        assert_eq!(f.core.status().unwrap().phase, Phase::Locked);
+        assert!(matches!(f.core.list(&epoch), Err(AppError::Locked)));
+    }
+    assert_eq!(f.data.lock().unwrap().reads.load(Ordering::SeqCst), reads);
+}
+impl Authentication for RemovalAuth {
+    fn authenticate<'a>(
+        &'a self,
+        _: &'a str,
+    ) -> Pin<Box<dyn Future<Output = AppResult<NativeApproval>> + Send + 'a>> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Ok(NativeApproval::from_native_success()) })
+    }
+    fn cancel(&self) {}
+}
+fn seed_removal(f: &Fixture, epoch: &str) -> Uuid {
+    let preview = f
+        .core
+        .prepare_import(
+            epoch,
+            Zeroizing::new(
+                include_bytes!("../../../tests/fixtures/authenticator-plain.json").to_vec(),
+            ),
+        )
+        .unwrap();
+    let ids = preview
+        .rows
+        .iter()
+        .filter_map(|r| r.account.as_ref())
+        .map(|a| Uuid::parse_str(&a.id).unwrap())
+        .collect();
+    f.core
+        .commit_import(epoch, Uuid::parse_str(&preview.id).unwrap(), ids, false)
+        .unwrap();
+    let hotp = f
+        .core
+        .list(epoch)
+        .unwrap()
+        .into_iter()
+        .find(|a| a.kind == crate::domain::account::OtpKind::Hotp)
+        .unwrap();
+    Uuid::parse_str(&hotp.id).unwrap()
+}
+#[test]
+fn removal_requires_confirmation_and_current_session_before_authentication() {
+    let auth = Arc::new(RemovalAuth(AtomicUsize::new(0)));
+    let f = Fixture::with_auth(auth.clone());
+    let epoch = f.unlock();
+    seed_removal(&f, &epoch);
+    assert!(matches!(
+        tauri::async_runtime::block_on(f.core.remove_all(epoch.clone(), "remover".into())),
+        Err(AppError::InvalidInput { .. })
+    ));
+    f.core.lock();
+    assert!(matches!(
+        tauri::async_runtime::block_on(f.core.remove_all(epoch, "REMOVER".into())),
+        Err(AppError::Locked)
+    ));
+    assert_eq!(auth.0.load(Ordering::SeqCst), 0);
+    assert_eq!(f.data.lock().unwrap().records.len(), 3);
+}
+#[test]
+fn cancelled_removal_leaves_accounts_and_session_unchanged() {
+    let f = Fixture::new();
+    let epoch = f.unlock();
+    seed_removal(&f, &epoch);
+    let deletes = f.data.lock().unwrap().deletes;
+    assert!(matches!(
+        tauri::async_runtime::block_on(f.core.remove_all(epoch.clone(), "REMOVER".into())),
+        Err(AppError::Cancelled)
+    ));
+    assert_eq!(f.core.status().unwrap().phase, Phase::Unlocked);
+    assert_eq!(f.core.list(&epoch).unwrap().len(), 3);
+    assert_eq!(f.data.lock().unwrap().deletes, deletes);
+    assert!(!f.root.join("journal.json").exists());
+}
+#[test]
+fn confirmed_removal_erases_secrets_and_revokes_transient_state_durably() {
+    let auth = Arc::new(RemovalAuth(AtomicUsize::new(0)));
+    let f = Fixture::with_auth(auth.clone());
+    let epoch = f.unlock();
+    let id = seed_removal(&f, &epoch);
+    f.core.hotp(&epoch, id).unwrap();
+    f.core.copy(&epoch, id).unwrap();
+    f.core
+        .prepare_uri(&epoch, "otpauth://totp/Pending?secret=MZXW6YTBOI")
+        .unwrap();
+    let status =
+        tauri::async_runtime::block_on(f.core.remove_all(epoch.clone(), "REMOVER".into())).unwrap();
+    assert_eq!(status.phase, Phase::Locked);
+    assert_ne!(status.epoch, epoch);
+    assert_eq!(auth.0.load(Ordering::SeqCst), 1);
+    assert!(f.data.lock().unwrap().records.is_empty());
+    assert_eq!(f.clip.0.load(Ordering::SeqCst), 1);
+    assert!(!f.root.join("journal.json").exists());
+    assert!(f.core.list(&epoch).is_err());
+    let next = f.unlock();
+    f.core
+        .authorized(&next, |inner| {
+            assert!(inner.hotp.is_empty());
+            assert!(inner.preview.is_none());
+            assert!(inner.clipboard.is_none());
+            assert!(inner.vault.references().is_empty());
+            Ok(())
+        })
+        .unwrap();
+    let mut reopened = Vault::open(
+        Storage(f.data.clone()),
+        DiskIndex::new(f.root.clone()).unwrap(),
+    )
+    .unwrap();
+    reopened.recover().unwrap();
+    assert!(reopened.summaries().unwrap().is_empty());
+}
+#[test]
+fn partial_removal_reports_failure_locks_and_retains_authenticated_recovery() {
+    let auth = Arc::new(RemovalAuth(AtomicUsize::new(0)));
+    let f = Fixture::with_auth(auth.clone());
+    let epoch = f.unlock();
+    seed_removal(&f, &epoch);
+    {
+        let mut data = f.data.lock().unwrap();
+        data.fail_delete = Some(data.deletes + 2);
+    }
+    assert!(matches!(
+        tauri::async_runtime::block_on(f.core.remove_all(epoch.clone(), "REMOVER".into())),
+        Err(AppError::StorageUnavailable)
+    ));
+    assert_eq!(f.core.status().unwrap().phase, Phase::Locked);
+    assert_eq!(f.data.lock().unwrap().records.len(), 2);
+    assert!(f.root.join("journal.json").is_file());
+    let deletes = f.data.lock().unwrap().deletes;
+    for _ in 0..20 {
+        f.core.tick();
+        assert!(f.core.list(&epoch).is_err());
+    }
+    assert_eq!(f.data.lock().unwrap().deletes, deletes);
+    assert_eq!(auth.0.load(Ordering::SeqCst), 1);
+    let next = f.unlock();
+    assert!(f.core.list(&next).unwrap().is_empty());
+    assert!(f.data.lock().unwrap().records.is_empty());
+    assert!(!f.root.join("journal.json").exists());
+}
+#[test]
+fn removal_is_single_flight_and_late_native_approval_cannot_erase_a_new_session() {
+    let (entered, started) = std::sync::mpsc::channel();
+    let (finish, result) = std::sync::mpsc::channel();
+    let auth = Arc::new(DeferredAuth {
+        entered,
+        result: Mutex::new(Some(result)),
+        attempts: AtomicUsize::new(0),
+    });
+    let f = Fixture::with_auth(auth.clone());
+    let epoch = f.unlock();
+    seed_removal(&f, &epoch);
+    let worker_core = f.core.clone();
+    let worker_epoch = epoch.clone();
+    let worker = std::thread::spawn(move || {
+        tauri::async_runtime::block_on(worker_core.remove_all(worker_epoch, "REMOVER".into()))
+    });
+    started.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert!(matches!(
+        tauri::async_runtime::block_on(f.core.remove_all(epoch, "REMOVER".into())),
+        Err(AppError::Conflict)
+    ));
+    f.core.lock();
+    let next = f.unlock();
+    finish
+        .send(Ok(NativeApproval::from_native_success()))
+        .unwrap();
+    assert!(matches!(worker.join().unwrap(), Err(AppError::Locked)));
+    assert_eq!(auth.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(f.core.list(&next).unwrap().len(), 3);
 }
 impl Authentication for DeferredAuth {
     fn authenticate<'a>(

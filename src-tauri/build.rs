@@ -1,4 +1,6 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=TOPOTP_VAULT_HELPER_CDHASH");
+    println!("cargo:rerun-if-env-changed=TOPOTP_VAULT_HELPER_CERT_SHA1");
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "vault_status",
@@ -13,6 +15,7 @@ fn main() {
             "save_account",
             "preview_uri_account",
             "delete_account",
+            "remove_all_data",
             "generate_hotp",
             "copy_code",
             "set_account_order",

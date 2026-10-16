@@ -4,9 +4,11 @@ pub mod auth;
 pub mod clipboard;
 pub mod events;
 pub mod keychain;
+pub mod management;
 pub mod panel;
 pub mod quick_access;
 pub mod scan;
+pub mod vault_helper;
 
 #[cfg(feature = "native-probe")]
 pub mod probe;

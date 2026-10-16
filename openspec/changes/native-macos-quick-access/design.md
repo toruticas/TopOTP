@@ -18,7 +18,7 @@ A mudança original permanece aberta para verificações manuais; não arquivá-
 
 **Non-Goals:**
 
-- Reescrever o aplicativo inteiro em SwiftUI, introduzir outro processo ou trocar a política do Keychain/LocalAuthentication.
+- Reescrever o aplicativo inteiro em SwiftUI ou trocar a política de LocalAuthentication. Um helper restrito de armazenamento foi acrescentado após comprovar a restrição de partição do Keychain login.
 - Expor captura genérica, shell, filesystem ou clipboard à janela web.
 - Acrescentar controles de configuração sem comportamento implementado, mudar limites de sessão, publicar nova versão ou substituir a instalação estável durante o desenvolvimento.
 
@@ -127,6 +127,22 @@ Exportar imediatamente antes da troca. Não gerar HOTP no app antigo após expor
 `native-smoke` é uma feature exclusiva de debug e identifier próprio: usa os adaptadores reais de autenticação/Keychain com contas públicas sintéticas, sem abrir o cofre pessoal. Pode validar a composição completa antes da instalação. É proibida em release como E2E/probe AppKit.
 
 ## Risks / Trade-offs
+
+### Complemento após diagnóstico de 16/10: dono estável do Keychain
+
+O preflight de DR passou, mas todos os itens do cofre direto examinado por metadados têm `ACLAuthorizationPartitionID` com o CDHash `017bfbef…` do build anterior. O novo CDHash `217dc7dd…` não satisfaz essa condição, embora ambos tenham o mesmo certificado e identificador. O chaveiro estava desbloqueado e não havia journal. Nenhum valor de credencial foi solicitado. O teste anterior usava Keychain descartável explicitamente selecionado, insuficiente para representar o login padrão. Referência: [Apple DTS sobre condições independentes de ACL/partição](https://developer.apple.com/forums/thread/845980).
+
+Manter um helper Swift pequeno, assinado uma vez por arquitetura e preservado em `TopOTP Build/vault-helper-v1`, com protocolo binário fixo de CRUD por UUID e limite de 32 KiB. O core Rust permanece responsável por sessões, biometria, OTP, journal e transferências. Somente o helper acessa o novo serviço do Keychain em produção. O transporte é um socketpair anônimo herdado: o helper valida audit token/certificado/identificador do pai, deriva o namespace desse identificador e revalida o código antes de cada operação. O pai valida o processo filho pelo CDHash compilado antes de enviar segredos. Sem endpoint nomeado, serviço arbitrário, retry ou fallback direto. EOF encerra o helper; falha de transporte revoga a sessão. Memória controlada é limpa, sem promessa de zeroização das cópias internas dos frameworks Apple.
+
+O build fixa hash de fonte, identidade e CDHash; fonte/cache divergentes param sem regenerar outro dono. O empacotamento deve preservar o CDHash do helper e validá-lo depois da assinatura. Builds CI ad hoc não comprovam nem habilitam esse caminho de confiança local. A prova de upgrade deve usar o login real com serviço sintético isolado, além da comparação de requisitos. Dois builds da interface, rollback, outro namespace e pai não autorizado integram a prova.
+
+A nova propriedade dos itens exige transferência deliberada para `vault-broker-v1`/serviço derivado do cliente. Restaurar primeiro o build `5a46add6…`, que satisfaz a partição dos itens diretos. Exportação/importação são feitas pelo usuário na UI; preservar todo o cofre anterior e seus contadores. Não ampliar ACL/partições nem introduzir senha do Keychain para contornar a recusa. O helper fixo evita repetir essa transferência nas atualizações normais da interface; atualizar o próprio helper é uma migração de segurança separada e nunca silenciosa.
+
+### Complemento: remoção explícita e janela persistente
+
+“Remover todos os dados” atua no cofre atual; a confirmação informa que backups externos e o namespace legado preservado não são removidos. A UI exige `REMOVER`; o core valida essa intenção, usa LocalAuthentication existente uma única vez e revalida a geração antes de qualquer exclusão. O commit publica manifesto vazio e mantém os UUIDs aposentados no journal até a exclusão efetiva no Keychain. Nesta operação a falha de limpeza é propagada, nunca convertida em sucesso. Iniciada a escrita, sucesso ou falha revogam a sessão e limpam prévias/HOTP/clipboard próprio. Recuperação durável ocorre somente numa próxima operação autenticada; polling não tenta excluir nem autenticar. Um manifesto vazio válido impede reativar a orientação de migração na reinicialização.
+
+A janela `management` declara `hidesOnDeactivate = false` no AppKit. Perda de foco e Escape não solicitam fechamento. A lógica web de 30 segundos do painel anterior é retirada; o prazo de retomada continua exclusivo do popover AppKit. Minimização limpa campos secretos e códigos, com revalidação antes de reapresentar; os prazos do core continuam vigentes. Revogação limpa formulários sem fechar a janela e preserva apenas a seção Geral para retorno após desbloqueio explícito. O controle de fechar da janela continua ocultando e descartando rascunhos.
 
 - [Nova coordenação de foco pode repetir a regressão anterior] → Abrir o popover após autenticar, iniciar tentativas somente por ação explícita, testar single-flight/cancelamento e não alterar os adaptadores estáveis para corrigir UI.
 - [Submenu e busca nativa dependem da interação AppKit real] → Fazer o protótipo sintético antes da ligação ao cofre e registrar teste de teclado/foco/submenu em macOS; testes web não bastam.

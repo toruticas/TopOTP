@@ -15,6 +15,7 @@
     "allow-save-account",
     "allow-preview-uri-account",
     "allow-delete-account",
+    "allow-remove-all-data",
     "allow-generate-hotp",
     "allow-copy-code",
     "allow-set-account-order",

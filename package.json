@@ -29,6 +29,7 @@
     "fixtures": "node scripts/generate-fixtures.mjs",
     "test:e2e:build": "tauri build --debug --no-bundle --features e2e --config src-tauri/tauri.e2e.conf.json -- --target-dir ../.artifacts/e2e-target",
     "test:e2e": "npm run test:e2e:build && wdio run ./wdio.conf.mjs",
+    "test:e2e:keychain": "node scripts/e2e-real-keychain.mjs",
     "licenses": "python3 scripts/collect-licenses.py"
   },
   "dependencies": {

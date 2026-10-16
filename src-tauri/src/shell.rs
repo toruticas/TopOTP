@@ -158,8 +158,13 @@ fn load(app: tauri::AppHandle, shell: Arc<Shell>, intent: u64, epoch: String, sh
                 .status()
                 .is_ok_and(|s| s.phase == Phase::Unlocked && s.epoch == epoch);
             if !authorized {
-                if show && matches!(result, Err(AppError::KeychainAccessDenied)) {
-                    quick_access::error_message(&AppError::KeychainAccessDenied.to_string());
+                if show
+                    && let Err(
+                        error
+                        @ (AppError::KeychainAccessDenied | AppError::VaultServiceUnavailable),
+                    ) = result
+                {
+                    quick_access::error_message(&error.to_string());
                 }
                 return;
             }
@@ -346,7 +351,7 @@ pub fn ensure_management(app: &tauri::AppHandle) -> tauri::Result<tauri::Webview
     if let Some(window) = app.get_webview_window("management") {
         return Ok(window);
     }
-    tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+    let window = tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
         .on_navigation(|url| {
             url.scheme() == "tauri" && url.host_str() == Some("localhost")
                 || cfg!(debug_assertions)
@@ -354,7 +359,9 @@ pub fn ensure_management(app: &tauri::AppHandle) -> tauri::Result<tauri::Webview
                     && url.host_str() == Some("127.0.0.1")
                     && url.port() == Some(1420)
         })
-        .build()
+        .build()?;
+    crate::platform::macos::management::configure(&window)?;
+    Ok(window)
 }
 pub fn open_management(app: &tauri::AppHandle, route: ManagementRoute) -> tauri::Result<()> {
     let shell = state(app);

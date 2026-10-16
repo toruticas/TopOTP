@@ -4,6 +4,39 @@ Separar tarefas de gerenciamento da consulta rápida de OTPs, oferecendo uma jan
 
 ## ADDED Requirements
 
+### Requirement: Explicit removal of the current vault
+
+Configurações MUST oferecer “Remover todos os dados”, delimitado ao cofre atual: contas, seeds no Keychain, contadores, ordem/favoritos e estado transitório. A confirmação MUST explicar que backups externos e o cofre legado preservado não são apagados. O usuário MUST digitar `REMOVER` e aprovar uma autenticação nativa adicional; o backend MUST validar confirmação e sessão antes e depois da autenticação. Cancelamento MUST NOT alterar os dados. A operação MUST invalidar a sessão, prévias, códigos e clipboard ainda pertencente ao app após iniciar a remoção. MUST declarar sucesso somente após excluir os itens do Keychain e concluir a limpeza do journal. Falha parcial MUST preservar referências de recuperação, informar o resultado e bloquear sem retries ou prompts automáticos.
+
+#### Scenario: Confirm removal
+
+- **WHEN** o usuário confirma a remoção e aprova autenticação com sessão ainda válida
+- **THEN** o cofre atual fica vazio, os itens referenciados e pendentes são excluídos, a sessão é revogada e ambas as superfícies descartam dados anteriores
+
+#### Scenario: Cancel or revoke authorization
+
+- **WHEN** a confirmação está incorreta, a autenticação é cancelada ou a sessão muda durante a autorização
+- **THEN** nenhuma remoção é iniciada e uma conclusão antiga não apaga dados
+
+#### Scenario: Storage failure during removal
+
+- **WHEN** uma exclusão de item ou limpeza do journal falha
+- **THEN** o app informa que a remoção não foi concluída, mantém recuperação durável e bloqueia; nova tentativa depende de ação explícita
+
+### Requirement: User controlled management window lifetime
+
+A janela de gerenciamento MUST permanecer visível ao perder foco ou trocar de aplicativo. Escape MUST NOT fechar a janela. Minimizar ou retornar à janela MUST NOT aplicar o prazo de retomada do popover nem descartar Configurações. Fechar pelo controle da janela MUST ocultá-la e limpar formulários. Bloqueio automático MUST continuar removendo dados sensíveis sem fechar a janela; Configurações MUST ser retomada após desbloqueio explícito. O popover nativo MUST continuar transitório.
+
+#### Scenario: Work in another application
+
+- **WHEN** Configurações está aberta e o usuário ativa outro aplicativo
+- **THEN** a janela continua aberta, sem solicitação de autenticação causada pelo foco
+
+#### Scenario: Session expires with settings open
+
+- **WHEN** o prazo da sessão expira na janela de Configurações
+- **THEN** a janela continua aberta com o cofre bloqueado e volta a Configurações após desbloqueio solicitado pelo usuário
+
 ### Requirement: Independent reusable management window
 
 Configurações MUST abrir uma janela normal do macOS, com título, fechamento e redimensionamento adequados, sem ocultá-la ao clicar fora. A janela MUST fornecer navegação para contas, cadastro/edição e importação/exportação, além de informações da versão e das regras de sessão vigentes. Nova entrada, Importar e Exportar em Mais MUST abrir diretamente o fluxo correspondente na mesma janela. Ações repetidas MUST reutilizar a instância existente. Fechar a janela MUST manter o app na barra de menus.

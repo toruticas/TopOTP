@@ -157,6 +157,18 @@ pub async fn delete_account(
     background(move || c.delete(&epoch, account_id)).await
 }
 #[tauri::command]
+pub async fn remove_all_data(
+    window: WebviewWindow,
+    core: State<'_, Arc<Core>>,
+    epoch: String,
+    confirmation: String,
+) -> AppResult<VaultStatus> {
+    client(&window)?;
+    let result = core.inner().remove_all(epoch, confirmation).await;
+    crate::shell::poll(window.app_handle());
+    result
+}
+#[tauri::command]
 pub async fn generate_hotp(
     window: WebviewWindow,
     core: State<'_, Arc<Core>>,
