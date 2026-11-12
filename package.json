@@ -1,6 +1,6 @@
 {
   "name": "topotp",
-  "version": "0.0.1-beta.1",
+  "version": "0.0.1",
   "private": true,
   "description": "Autenticador TOTP/HOTP para a barra de menus do macOS",
   "license": "MIT",

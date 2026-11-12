@@ -95,8 +95,27 @@
 - [x] 12.4 Executar as checagens aplicáveis finais e validar a mudança OpenSpec; marcar somente tarefas entregues, registrando qualquer verificação nativa ou de target ainda pendente com sua causa.
 - [x] 12.5 Preparar a primeira beta `0.0.1-beta.1` com manifests/lockfiles alinhados, empacotamento versionado, notas, DMGs arm64/x86_64 inspecionados e checksums para o pré-release no GitHub.
 
+## 13. Correções da revisão do repositório
+
+- [x] 13.1 Preservar a identidade original da escrita no clipboard e testar a substituição por outra escrita antes do retorno da cópia, em pasteboard isolado.
+- [x] 13.2 Preservar o índice externo atualizado de registros v3 e cobrir a divergência legítima em relação ao índice cifrado interno.
+- [x] 13.3 Impedir exportações acima dos limites de arquivo/ciphertext aceitos na importação, com orientação de erro e testes de borda.
+- [x] 13.4 Informar exclusão pendente quando a limpeza do Keychain falha após o commit, preservar a recuperação e testar o aviso na interface.
+- [x] 13.5 Exibir dígitos, período TOTP e próximo contador HOTP na prévia de importação/URI, com testes de apresentação sem seeds.
+
+## 14. Publicação estável solicitada pelo usuário
+
+- [x] 14.1 Alinhar manifests/lockfiles em `0.0.1` e preparar documentação/notas sem ocultar verificações nativas pendentes.
+- [x] 14.2 Separar checks de PR e publicação manual da `main`, com builds por arquitetura, inspeção e assets DMG/SHA256SUMS no GitHub; validar a configuração sem gerar pacotes antes da PR.
+- [ ] 14.3 Enviar a branch e abrir PR das correções/versionamento para o usuário revisar e fazer merge.
+- [ ] 14.4 Confirmar o merge pelo usuário e identificar o commit resultante na `main`.
+- [ ] 14.5 Executar o workflow a partir desse commit, verificar artefatos/checksums e confirmar a release `v0.0.1` publicada no GitHub.
+
 ## Evidências e pendências da entrega
 
+- A preparação de `v0.0.1`, solicitada explicitamente pelo usuário, alinhou as versões e acrescentou `check-release-version.mjs` e o workflow manual `Publish macOS release`. A CI do PR executa somente verificações; a geração/publicação de DMGs depende de execução na `main` após o merge pelo usuário. `actionlint` validou ambos os workflows e a checagem de versões passou em `0.0.1`. Os pacotes de produção dessa versão e sua release ainda não foram gerados/publicados.
+- A validação local foi repetida com `0.0.1`: 45 testes Rust/interoperabilidade e 17 frontend passaram. As primeiras repetições E2E falharam por cliques antes da habilitação e perda de foco do painel, confirmada pela captura mascarada. O harness passou a aguardar os controles e a usar a reabertura nativa durante esperas limitadas; os quatro casos passaram após esse ajuste, preservando um único clique HOTP, os códigos esperados e o próximo contador. O runtime de produção não foi alterado para acomodar a automação.
+- As cinco correções da revisão foram concluídas com 66 testes aprovados: 44 unitários Rust, 1 de interoperabilidade, 17 frontend e 4 E2E no WKWebView com adaptadores sintéticos. Typecheck, ESLint, Prettier, Clippy, rustfmt e validação OpenSpec estrita passaram. O clipboard foi exercitado em pasteboard nativo isolado, incluindo substituição por texto igual/diferente; a exclusão com falha foi testada com armazenamento simulado, journal e nova tentativa no desbloqueio. A regressão upstream reordena envelopes v3 sem recifrar; os testes de exportação verificam limites de tamanho e restauração de seleção menor. Nenhuma credencial pessoal foi acessada, nenhum bundle de produção foi atualizado e as seis verificações manuais anteriores continuam pendentes.
 - Touch ID confirmado pelo usuário no `.app` ad hoc; abertura pelo ícone do build final também confirmada.
 - 40 testes Rust (incluindo interoperabilidade com funções originais), 12 testes frontend e 4 testes E2E no WKWebView aprovados. Typecheck, lint, Prettier, rustfmt, Clippy e validação OpenSpec aprovados.
 - Probes reais Swift/Rust comprovaram Keychain tradicional; outro executável recebeu negativa de acesso. Não foi exigida conta/perfil Apple.

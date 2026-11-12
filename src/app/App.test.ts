@@ -50,6 +50,31 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('vault presentation boundaries', () => {
+  it('reports pending secret deletion after removing the committed account from the list', async () => {
+    vi.mocked(api.status).mockResolvedValue({ phase: 'unlocked', epoch: '2' });
+    vi.mocked(api.delete).mockRejectedValue({ code: 'DeletionPending' });
+    wrapper = mount(App, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.get('button[aria-label="Editar alice"]').trigger('click');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Excluir conta…')!
+      .trigger('click');
+    vi.mocked(api.list).mockResolvedValue([]);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Confirmar exclusão')!
+      .trigger('click');
+    await flushPromises();
+
+    expect(api.delete).toHaveBeenCalledWith('2', account.id);
+    expect(wrapper.findComponent(AccountForm).exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('alice');
+    expect(wrapper.get('[role=alert]').text()).toContain(
+      'a exclusão no Keychain ainda não foi confirmada',
+    );
+    expect(wrapper.text()).not.toContain('Conta excluída');
+  });
   it('starts locked without loading accounts or rendering credentials', async () => {
     wrapper = mount(App, { attachTo: document.body });
     await flushPromises();

@@ -18,6 +18,7 @@ struct Data {
     records: HashMap<Uuid, Vec<u8>>,
     reads: AtomicUsize,
     fail_update: bool,
+    fail_delete: bool,
 }
 struct Storage(Arc<Mutex<Data>>);
 impl Store for Storage {
@@ -39,7 +40,11 @@ impl Store for Storage {
         Ok(())
     }
     fn delete(&mut self, id: Uuid) -> AppResult<()> {
-        self.0.lock().unwrap().records.remove(&id);
+        let mut s = self.0.lock().unwrap();
+        if s.fail_delete {
+            return Err(AppError::StorageUnavailable);
+        }
+        s.records.remove(&id);
         Ok(())
     }
 }
@@ -381,4 +386,41 @@ fn import_preview_is_revoked_before_commit() {
     );
     let e2 = f.unlock();
     assert!(f.core.list(&e2).unwrap().is_empty());
+}
+
+#[test]
+fn failed_secret_deletion_is_reported_and_recovered_on_next_unlock() {
+    let f = Fixture::new();
+    let e = f.unlock();
+    let record = crate::compatibility::uri::parse_uri(
+        "otpauth://hotp/Synthetic?secret=JBSWY3DPEHPK3PXP&counter=0",
+    )
+    .unwrap();
+    let id = record.id;
+    f.core
+        .authorized(&e, |i| i.vault.commit(vec![(record, false)], &[]))
+        .unwrap();
+    f.core.hotp(&e, id).unwrap();
+    f.data.lock().unwrap().fail_delete = true;
+
+    let error = f.core.delete(&e, id).unwrap_err();
+    assert_eq!(
+        serde_json::to_value(error).unwrap()["code"],
+        "DeletionPending"
+    );
+    assert!(f.core.list(&e).unwrap().is_empty());
+    assert!(
+        !f.core
+            .authorized(&e, |i| Ok(i.hotp.contains_key(&id)))
+            .unwrap()
+    );
+    assert_eq!(f.data.lock().unwrap().records.len(), 1);
+    assert!(f.root.join("journal.json").exists());
+
+    f.core.lock();
+    f.data.lock().unwrap().fail_delete = false;
+    let e = f.unlock();
+    assert!(f.core.list(&e).unwrap().is_empty());
+    assert!(f.data.lock().unwrap().records.is_empty());
+    assert!(!f.root.join("journal.json").exists());
 }

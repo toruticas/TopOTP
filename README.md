@@ -4,7 +4,7 @@ Autenticador **TOTP/HOTP para a barra de menus do macOS**, com Vue 3/TypeScript 
 
 Desbloqueio por **Touch ID ou senha do macOS, sem conta Apple**. Touch ID foi confirmado pelo usuário no `.app` ad hoc. A autenticação protege a sessão do aplicativo; o item do Keychain usa ACL do app e não possui uma exigência biométrica independente.
 
-Versão de testes: **[v0.0.1-beta.1](https://github.com/toruticas/TopOTP/releases/tag/v0.0.1-beta.1)**. Os pacotes `.dmg` para Apple Silicon e Intel e seus checksums ficam no pré-release. A versão estável `v0.0.1` fica reservada para depois das validações mínimas do produto.
+Versão deste código: **v0.0.1**, primeira versão estável solicitada. Consulte as [notas da versão](docs/releases/v0.0.1.md) e a [página de releases](https://github.com/toruticas/TopOTP/releases) para os downloads. Os DMGs Apple Silicon/Intel e checksums são publicados a partir de um commit da `main`, por execução manual após o merge do PR. A beta anterior está em [v0.0.1-beta.1](https://github.com/toruticas/TopOTP/releases/tag/v0.0.1-beta.1).
 
 ## Recursos implementados
 
@@ -26,7 +26,7 @@ rtk proxy npm run tauri:dev
 rtk proxy npm run tauri:build
 ```
 
-O build cria `.app` e `.dmg` com assinatura ad hoc, sem notarização. Builds arm64 e x86_64 foram gerados; Intel e macOS 13 ainda aguardam execução correspondente. O pré-release é experimental e mantém essas limitações documentadas.
+O build cria `.app` e `.dmg` com assinatura ad hoc, sem notarização. Builds locais anteriores para arm64 e x86_64 foram gerados; Intel e macOS 13 ainda aguardam execução correspondente. A versão `v0.0.1` preserva essas limitações e as verificações manuais pendentes.
 
 Consulte [uso e recuperação](docs/usage.md), [desenvolvimento e checks](docs/development.md), [evidências nativas](docs/native-verification.md) e [compatibilidade upstream](docs/upstream-compatibility.md).
 

@@ -91,6 +91,8 @@ Os probes ad hoc Swift/Rust do modelo inicial retornaram `errSecMissingEntitleme
 
 Persistir fora do Keychain apenas preferências visuais e um manifesto versionado de referências opacas, ordem e fixação. Esse arquivo não contém seed, nome, parâmetros sensíveis nem contador autoritativo. Criar/editar usando item novo seguido de substituição atômica do manifesto; registrar intenções de recuperação somente com IDs. Exclusão remove o item e atualiza referências, reportando qualquer falha. Recuperação detecta itens pendentes/referências ausentes sem apagar contas previamente confirmadas.
 
+Após o commit de exclusão, confirmar também a limpeza dos itens retirados do manifesto. Se essa etapa falhar, preservar o journal e retornar `DeletionPending`: a UI atualiza a lista já confirmada, mas avisa que a exclusão no Keychain ainda não foi confirmada. O próximo desbloqueio repete a recuperação; não reintroduzir a conta nem tratar essa falha como rollback do manifesto.
+
 Dados sensíveis são lidos transitoriamente no Rust e descartados após uso, sem cache permanente de seeds. Aplicar zeroização aos buffers sob controle da aplicação e limitar cópias; bindings/frameworks e strings JS transitórias têm limites de garantia de apagamento, que devem ser documentados. O primeiro cadastro pode enviar seed/URI pela IPC; isso não autoriza ler de volta o seed existente.
 
 ### 5. Autenticação nativa de sessão e revogação
@@ -148,6 +150,8 @@ Descriptografar v3 no Rust, reproduzindo a representação exata da derivação 
 
 Na prévia, detectar duplicatas por identidade/configuração/seed normalizados apenas em memória nativa e por proveniência quando disponível. Manter existente por padrão; não diminuir HOTP. Revisão informa todos os motivos de não importação. Seleção explícita de subconjunto é permitida. Para commit, gravar itens novos em staging, manter um journal de IDs, substituir o manifesto de referências atomicamente e limpar itens órfãos após sucesso/recuperação. Nenhum item anterior é alterado antes do commit do novo conjunto; falha não resulta em lista parcialmente importada.
 
+A prévia mostra os parâmetros públicos completos: tipo, algoritmo, dígitos e período TOTP ou próximo contador HOTP. Para `EncOTPStorage`, o índice externo determina a ordem atual: o upstream pode reordenar esse envelope sem atualizar o índice cifrado interno. Aplicar os mesmos limites de tamanho total e ciphertext por registro na exportação antes de liberar os bytes para gravação, recusando saídas que o importador não aceitaria.
+
 Exportação padrão usa v3 e senha confirmada, com salts/IDs aleatórios e envelope compatível, sem persistir a senha. Criar fixture de ida e volta verificável pela extensão. Esse envelope serve somente à interoperabilidade de backup: seu esquema baseado em CryptoJS não oferece a propriedade de integridade autenticada de AES-GCM. Não descrevê-lo como um novo cofre ou formato autenticado; validar conteúdos após decriptação e documentar essa limitação. Um formato nativo de backup com AEAD será uma mudança separada, se necessário.
 
 O backend grava backup criptografado com permissão restrita em arquivo temporário cifrado e commit atômico no destino confirmado. Texto claro exige seleção e reconhecimento explícitos; escrever apenas no destino final novo com permissão restrita, sem temporário em texto claro e sem sobrescrever um arquivo existente. Remover saídas incompletas em falhas tratadas e registrar recuperação sem seeds. O renderer recebe status, nunca JSON/Blob/URI de download. Exportar não consome HOTP nem altera contas.
@@ -155,6 +159,8 @@ O backend grava backup criptografado com permissão restrita em arquivo temporá
 ### 9. Clipboard e transientes de UI
 
 O backend calcula TOTP no momento de copiar e obtém HOTP do último resultado emitido na sessão. Escrever via adaptador `NSPasteboard`, registrando a identidade da escrita/`changeCount`; limpar após 30 s, bloqueio ou encerramento somente se essa identidade continuar atual. Comparar só o texto seria incorreto caso outro app escrevesse o mesmo valor.
+
+Capturar a geração retornada por `clearContents` ao tomar posse do pasteboard. Uma consulta de `changeCount` após escrever pode observar a geração de outro aplicativo e não deve substituir a identidade original.
 
 Remover códigos e metadados da UI ao bloquear/ocultar, limpar campos de seed/URI/senhas após envio ou cancelamento e descartar resultados de gerações antigas. Não usar persistência automática de formulários, stores ou query caches com campos sensíveis. Não copiar seeds em fluxos comuns; a área de transferência do sistema continua sujeita à observação de outros apps, mesmo com prazo de limpeza.
 
@@ -168,7 +174,7 @@ Para desktop, usar WebdriverIO com serviço Tauri e provider embedded em um buil
 
 Registrar smoke tests reais: iniciar bloqueado, abrir/fechar/reabrir, teclado/VoiceOver, dois monitores, Touch ID/senha/cancelar, sistema bloqueado/suspenso, falha de armazenamento, importação/exportação pelo app e restart HOTP. Preparar builds locais arm64/x86_64 com mínimo macOS 13; suporte publicado exige evidência no target correspondente. Configurar build/entitlements/assinatura com identidade estável; não alegar notarização sem executá-la.
 
-A primeira distribuição de testes solicitada usa `0.0.1-beta.1` nos manifests npm/Cargo/Tauri e a tag `v0.0.1-beta.1`, associada ao commit da `main`. O GitHub a apresenta como pré-release, sem classificá-la como versão estável. Anexar DMGs Apple Silicon/Intel e `SHA256SUMS`; os pacotes recebem a versão do `Info.plist`, e a inspeção deve confirmar sua correspondência com os manifests. As notas registram assinatura ad hoc, ausência de notarização e verificações nativas pendentes. `v0.0.1` permanece reservada à primeira versão minimamente validada.
+A primeira distribuição de testes usou `0.0.1-beta.1` nos manifests npm/Cargo/Tauri e a tag `v0.0.1-beta.1` como pré-release. O usuário posteriormente autorizou a promoção das correções revisadas para `v0.0.1` estável. Alinhar manifests/lockfiles e abrir PR para merge pelo próprio usuário antes de gerar artefatos da versão. A CI de PR executa os checks, sem pacotes de release. Após o merge, o workflow manual `release.yml` executa somente na `main`, fixa o checkout em `github.sha`, repete os checks e gera/inspeciona os builds Apple Silicon e Intel. Somente o job de publicação recebe escrita no repositório e cria a tag/release estável com os dois DMGs e `SHA256SUMS`. Os pacotes recebem a versão do `Info.plist`; conferir versões, arquitetura, assinatura e ausência de componentes de teste. As notas registram assinatura ad hoc, ausência de notarização e verificações nativas pendentes; a promoção não constitui evidência dessas verificações.
 
 ## Risks / Trade-offs
 

@@ -241,11 +241,24 @@ async function remove() {
   if (!editing.value) return;
   const id = editing.value.id;
   await action(async (current) => {
-    await api.delete(status.value.epoch, id);
+    let pendingDeletion: unknown;
+    try {
+      await api.delete(status.value.epoch, id);
+    } catch (e) {
+      if (
+        typeof e !== 'object' ||
+        e === null ||
+        !('code' in e) ||
+        e.code !== 'DeletionPending'
+      )
+        throw e;
+      pendingDeletion = e;
+    }
     if (current()) {
       view.value = 'list';
       editing.value = null;
       await refresh();
+      if (pendingDeletion) throw pendingDeletion;
     }
   });
 }

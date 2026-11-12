@@ -6,6 +6,8 @@ O painel abre imediatamente abaixo do ícone. Clicar fora ou pressionar Escape o
 
 Adicione conta manualmente (Base32, TOTP/HOTP e parâmetros) ou escolha URI `otpauth://`, revise a prévia e confirme. Edite por “•••”; deixar “Nova chave” vazia preserva a chave. Exclusão exige confirmação. Busca, estrelas e setas ajudam a organizar as contas. Rótulos são apresentados como texto.
 
+A prévia informa tipo, algoritmo e dígitos, além do período TOTP ou próximo contador HOTP. Se uma exclusão retirar a conta da lista, mas a remoção do segredo ainda não puder ser confirmada no Keychain, o app apresenta um aviso. Bloqueie e desbloqueie para repetir a limpeza pendente; preserve os dados do aplicativo até ela ser concluída.
+
 **Copiar** calcula o TOTP atual. HOTP só avança em **Gerar próximo**; copiar novamente não consome outro contador. O incremento é persistido antes de mostrar o código. Uma interrupção entre persistência e exibição pode pular um código; o contador nunca é revertido. Também não pode ser reduzido trocando o tipo da conta.
 
 ## Backups
@@ -17,6 +19,8 @@ Adicione conta manualmente (Base32, TOTP/HOTP e parâmetros) ou escolha URI `otp
 O envelope v3 mantém compatibilidade com a extensão, mas AES-CBC nesse formato não autentica integridade. Preserve o arquivo em local confiável. Não use esse envelope como formato de cofre local.
 
 Steam/Battle.net/hex/GOST, backups criptografados antigos, QR/câmera e Google migration estão fora desta versão. Reexporte formatos antigos pela extensão atual. Limites: 5 MiB, 1000 contas, 32 chaves e orçamento de processamento limitado.
+
+A exportação também verifica os limites de arquivo e de cada registro antes de gravar. Se o backup exceder o limite, tente exportar menos contas por vez. Nomes de conta/emissor muito longos podem exigir redução; não altere chaves secretas para reduzir o tamanho de um backup.
 
 ## Bloqueio, armazenamento e atualização
 

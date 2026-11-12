@@ -19,7 +19,7 @@ Leia nesta ordem:
 - Use as skills OpenSpec locais em `.agents/skills/`. Não execute `openspec init` novamente em um projeto já inicializado; esse comando pode migrar/remover atalhos globais.
 - Use os caminhos retornados por `openspec status` e `openspec instructions`. Não assuma que uma mudança está no diretório local caso o CLI indique uma store.
 - Execute comandos shell com o prefixo `rtk`; para comandos sem suporte específico, use `rtk proxy <comando>`.
-- Envie commits para `origin/main`. A branch local desta worktree pode ter outro nome; use `git push origin HEAD:main` para tornar o destino explícito.
+- Para a entrega `v0.0.1`, envie a branch de trabalho e abra um PR para `main`; o usuário fará o merge. Gere os artefatos e publique a versão no GitHub somente depois do merge, a partir do commit da `main`, por execução manual controlada.
 - Escreva comunicação e documentação do projeto em português brasileiro. Preserve os títulos estruturais exigidos pelo OpenSpec e os identificadores de código em inglês.
 - Não copie configurações ou código da extensão sem revisar dependências do navegador, segurança e licença. Registre origem, commit e licença de qualquer trecho reaproveitado.
 
@@ -56,4 +56,4 @@ Validar comportamento por camadas: vetores RFC e importação no domínio; falha
 
 Ao concluir uma tarefa, marcar somente itens comprovadamente entregues e registrar os testes executados. Diferenciar teste com adaptador simulado de teste nativo, build local de release assinado, e suporte planejado de suporte verificado.
 
-Canal atual: `0.0.1-beta.1`, tag `v0.0.1-beta.1`; `v0.0.1` será a primeira versão estável. Mantenha versões npm/Cargo/Tauri e lockfiles alinhadas. O nome do DMG deve vir da versão do `.app`, sem constante fixa no empacotador. Pré-releases no GitHub incluem DMGs por arquitetura e `SHA256SUMS`; builds permanecem ad hoc e não notarizados enquanto isso não mudar explicitamente.
+Versão do código: `0.0.1`, tag de release `v0.0.1`, primeira versão estável solicitada. A beta histórica `v0.0.1-beta.1` permanece publicada; não confunda a preparação do PR com build ou publicação da estável. Mantenha versões npm/Cargo/Tauri e lockfiles alinhadas. O nome do DMG deve vir da versão do `.app`, sem constante fixa no empacotador. A publicação no GitHub deve incluir DMGs por arquitetura e `SHA256SUMS`, vinculados ao commit da `main` após o merge. Builds permanecem ad hoc e não notarizados, e as pendências nativas continuam abertas enquanto não houver evidência correspondente.

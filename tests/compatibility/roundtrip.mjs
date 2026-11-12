@@ -76,5 +76,18 @@ export async function originalBackups(ref, entries, password) {
   for (const entry of entries) entry.changeEncryption(encryption);
   const plain = ref.EntryStorage.getExport(entries, false);
   const encrypted = { ...ref.EntryStorage.getExport(entries, true), [id]: key };
-  return { plain, encrypted };
+  await ref.BrowserStorage.set(encrypted);
+  const lockedEntries = await ref.EntryStorage.get();
+  for (const entry of lockedEntries)
+    entry.index = lockedEntries.length - 1 - entry.index;
+  await ref.EntryStorage.set(lockedEntries);
+  const reorderedEncrypted = await ref.EntryStorage.backupGetExport(
+    encryption,
+    true,
+  );
+  for (const [hash, entry] of Object.entries(reorderedEncrypted)) {
+    if (entry.dataType === 'EncOTPStorage')
+      assert.equal(entry.data, encrypted[hash].data);
+  }
+  return { plain, encrypted, reorderedEncrypted };
 }

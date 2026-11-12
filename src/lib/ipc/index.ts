@@ -77,10 +77,13 @@ export function errorMessage(error: unknown): string {
       'Formato não suportado. Reexporte o backup pela extensão atual.',
     StorageUnavailable:
       'Não foi possível acessar o Keychain ou gravar o arquivo.',
+    DeletionPending:
+      'A conta saiu da lista, mas a exclusão no Keychain ainda não foi confirmada. Bloqueie e desbloqueie o cofre para tentar novamente.',
     NotFound: 'Conta ou prévia não encontrada.',
     CounterExhausted: 'O contador atingiu o limite suportado.',
     InvalidPassword: 'Senha do backup incorreta.',
-    LimitExceeded: 'O arquivo ou processamento excede os limites de segurança.',
+    LimitExceeded:
+      'O arquivo ou processamento excede os limites de segurança. Na exportação, selecione menos contas ou reduza nomes muito longos.',
     Conflict: 'Os dados mudaram. Revise a operação.',
   };
   return messages[code] ?? 'Não foi possível concluir a operação.';

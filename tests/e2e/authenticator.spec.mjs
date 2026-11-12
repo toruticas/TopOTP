@@ -42,6 +42,32 @@ async function openPanel() {
   });
 }
 
+async function ensurePanelOpen() {
+  await waitForPanel(async () => true, 'O painel deve estar visível.');
+}
+
+async function waitForPanel(condition, timeoutMsg) {
+  await browser.waitUntil(
+    async () => {
+      if (!(await $('main').isDisplayed())) {
+        console.log('Reabrindo o painel sintético após perda de foco.');
+        await openPanel();
+        return false;
+      }
+      return condition();
+    },
+    { timeoutMsg },
+  );
+}
+
+async function waitForReady(selector) {
+  await waitForPanel(
+    async () =>
+      (await $(selector).isDisplayed()) && (await $(selector).isEnabled()),
+    `O controle ${selector} deve estar visível e habilitado.`,
+  );
+}
+
 async function presentation() {
   return browser.executeAsync((done) => {
     const invoke = globalThis.__TAURI_INTERNALS__.invoke;
@@ -56,6 +82,7 @@ async function presentation() {
 }
 
 async function clearSyntheticVault() {
+  await ensurePanelOpen();
   const result = await browser.executeAsync((done) => {
     const invoke = globalThis.__TAURI_INTERNALS__.invoke;
     (async () => {
@@ -69,21 +96,27 @@ async function clearSyntheticVault() {
   assert.equal(result, 'cleared');
   await $('button=Bloquear').click();
   await $('button=Desbloquear').click();
-  await expect($('button=Adicionar conta')).toBeDisplayed();
+  await ensurePanelOpen();
+  await waitForReady('button=Adicionar conta');
   assert.equal((await $$('.account-card')).length, 0);
 }
 
 async function beginImport(source) {
   await copyFile(resolve(source), resolve(artifacts, 'import-source.json'));
+  await ensurePanelOpen();
+  await waitForReady('button=Importar');
   await $('button=Importar').click();
-  await expect($('h2=Importar backup')).toBeDisplayed();
+  await waitForReady('h2=Importar backup');
 }
 
 async function commit(count) {
   await $(`button=Importar ${count} conta(s)`).click();
-  await browser.waitUntil(
+  await waitForPanel(
     async () => (await $$('.account-card')).length === count,
+    `A lista deve conter ${count} contas.`,
   );
+  await ensurePanelOpen();
+  await waitForReady('button=Importar');
 }
 
 async function fillPasswords(values) {
@@ -137,6 +170,7 @@ function expectedRecords(accounts) {
 }
 
 async function checkNativeCodes() {
+  await ensurePanelOpen();
   const data = await presentation();
   assert(!data.error);
   const records = expectedRecords(data.accounts);
@@ -206,9 +240,9 @@ describe('TopOTP transfer interoperability with synthetic native adapters', () =
   before(async () => {
     await mkdir(artifacts, { recursive: true });
     await openPanel();
-    await expect($('button=Desbloquear')).toBeDisplayed();
+    await waitForReady('button=Desbloquear');
     await $('button=Desbloquear').click();
-    await expect($('button=Adicionar conta')).toBeDisplayed();
+    await waitForReady('button=Adicionar conta');
   });
 
   it('imports plain JSON and exports both formats accepted by original import', async () => {
@@ -220,13 +254,19 @@ describe('TopOTP transfer interoperability with synthetic native adapters', () =
     await beginImport('tests/fixtures/authenticator-plain.json');
     assert.equal((await $$('input[type=password]')).length, 0);
     await $('button=Importar 3 conta(s)').click();
-    await browser.waitUntil(
+    await waitForPanel(
       async () => (await $$('.account-card')).length === 4,
+      'A importação deve exibir quatro contas.',
     );
     await checkNativeCodes();
     const counter = await $('.account-card*=counter');
+    await waitForReady('.account-card*=counter');
+    await expect(counter.$('button=Gerar próximo')).toBeEnabled();
     await counter.$('button=Gerar próximo').click();
-    await expect(counter.$('.code')).toHaveText('162 583');
+    await waitForPanel(
+      async () => (await counter.$('.code').getText()) === '162 583',
+      'O único clique deve emitir o HOTP 162 583.',
+    );
     assert.equal(
       (await presentation()).accounts.find((a) => a.kind === 'hotp')
         .nextCounter,
@@ -285,8 +325,12 @@ describe('TopOTP transfer interoperability with synthetic native adapters', () =
       await commit(4);
       await checkNativeCodes();
       const counter = await $('.account-card*=counter');
+      await expect(counter.$('button=Gerar próximo')).toBeEnabled();
       await counter.$('button=Gerar próximo').click();
-      await expect(counter.$('.code')).toHaveText('399 871');
+      await waitForPanel(
+        async () => (await counter.$('.code').getText()) === '399 871',
+        'O único clique deve emitir o HOTP 399 871.',
+      );
       await beginImport(
         resolve(artifacts, `${encrypted ? 'encrypted' : 'plain'}-export.json`),
       );
@@ -301,7 +345,7 @@ describe('TopOTP transfer interoperability with synthetic native adapters', () =
       );
     }
     await $('button=Bloquear').click();
-    await expect($('button=Desbloquear')).toBeDisplayed();
+    await waitForReady('button=Desbloquear');
     assert.equal((await $$('.account-card')).length, 0);
     const rejected = await browser.executeAsync((done) => {
       globalThis.__TAURI_INTERNALS__

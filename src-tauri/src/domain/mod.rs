@@ -16,6 +16,8 @@ pub enum AppError {
     UnsupportedFormat,
     #[error("Armazenamento seguro indisponível")]
     StorageUnavailable,
+    #[error("Exclusão no Keychain ainda não confirmada")]
+    DeletionPending,
     #[error("Conta não encontrada")]
     NotFound,
     #[error("Contador esgotado")]

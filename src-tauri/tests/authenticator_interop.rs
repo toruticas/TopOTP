@@ -88,7 +88,7 @@ fn plain_and_v3_roundtrip_through_original_file_import_and_export() {
         String::from_utf8_lossy(&output.stderr)
     );
     let response: Value = serde_json::from_slice(&output.stdout).unwrap();
-    for format in ["plain", "encrypted"] {
+    for format in ["plain", "encrypted", "reorderedEncrypted"] {
         let bytes = serde_json::to_vec(&response[format]).unwrap();
         let preview = backup::decode(&bytes, &HashMap::new(), || Ok(())).unwrap();
         let passwords = preview
@@ -99,7 +99,11 @@ fn plain_and_v3_roundtrip_through_original_file_import_and_export() {
         let decoded = backup::decode(&bytes, &passwords, || Ok(())).unwrap();
         assert!(decoded.keys.is_empty());
         assert_eq!(decoded.entries.len(), records.len());
-        for (entry, (original, pinned)) in decoded.entries.iter().zip(&records) {
+        let mut original_records: Vec<_> = records.iter().collect();
+        if format == "reorderedEncrypted" {
+            original_records.reverse();
+        }
+        for (entry, (original, pinned)) in decoded.entries.iter().zip(original_records) {
             assert!(entry.issue.is_none(), "{format}: {:?}", entry.issue);
             let restored = entry.record.as_ref().unwrap();
             assert_eq!(restored.kind, original.kind);

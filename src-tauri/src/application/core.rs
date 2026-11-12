@@ -209,7 +209,9 @@ impl Core {
         self.authorized(epoch, |i| {
             i.vault.commit(vec![], &[id])?;
             i.hotp.remove(&id);
-            Ok(())
+            // The manifest commit is durable even if cleanup needs recovery.
+            // Explicit deletion must also confirm removal of the secret.
+            i.vault.recover().map_err(|_| AppError::DeletionPending)
         })
     }
     pub fn totp(&self, epoch: &str) -> AppResult<Vec<Code>> {

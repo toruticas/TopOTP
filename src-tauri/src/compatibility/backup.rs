@@ -299,7 +299,11 @@ pub fn decode_with_progress(
                             && raw.hash.as_deref() == Some(source_id)) =>
             {
                 entry.pinned = raw.pinned;
-                entry.index = raw.index;
+                // Upstream can reorder encrypted envelopes without rewriting
+                // their ciphertext, leaving the inner index out of date.
+                if data_type != Some("EncOTPStorage") {
+                    entry.index = raw.index;
+                }
                 let input = AccountInput {
                     issuer: raw.issuer,
                     account: raw.account,
@@ -335,6 +339,9 @@ pub fn encode(
     password: Option<&str>,
     mut check: impl FnMut() -> AppResult<()>,
 ) -> AppResult<Zeroizing<Vec<u8>>> {
+    if records.len() > super::MAX_OTP_ENTRIES {
+        return Err(AppError::LimitExceeded);
+    }
     let mut root = SensitiveJson(Value::Object(Default::default()));
     let key_id = Uuid::new_v4().to_string();
     let salt = Uuid::new_v4().to_string();
@@ -372,16 +379,24 @@ pub fn encode(
             let bytes = Zeroizing::new(
                 serde_json::to_vec(&raw.0).map_err(|_| AppError::StorageUnavailable)?,
             );
-            json!({"dataType":"EncOTPStorage","keyId":key_id,"data":crypto::encrypt(&bytes,pass)?,"index":index})
+            let data = crypto::encrypt(&bytes, pass)?;
+            if data.len() > super::MAX_CIPHERTEXT_BYTES {
+                return Err(AppError::LimitExceeded);
+            }
+            json!({"dataType":"EncOTPStorage","keyId":key_id,"data":data,"index":index})
         } else {
             raw.0.clone()
         };
         root.0.as_object_mut().unwrap().insert(hash, v);
     }
     check()?;
-    Ok(Zeroizing::new(
+    let bytes = Zeroizing::new(
         serde_json::to_vec_pretty(&root.0).map_err(|_| AppError::StorageUnavailable)?,
-    ))
+    );
+    if bytes.len() as u64 > super::MAX_BACKUP_BYTES {
+        return Err(AppError::LimitExceeded);
+    }
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -618,6 +633,80 @@ mod tests {
         let data = decode(&bytes, &p, || Ok(())).unwrap();
         assert_eq!(data.entries[0].record.as_ref().unwrap().next_counter, 42);
         assert!(data.entries[0].pinned);
+    }
+    fn large_export_record(issuer: String, account: String) -> AccountRecord {
+        let mut record = crate::compatibility::uri::parse_uri(&format!(
+            "otpauth://totp/Synthetic?secret={}",
+            "A".repeat(super::super::MAX_TEXT_BYTES)
+        ))
+        .unwrap();
+        record.issuer = issuer;
+        record.account = account;
+        record.validate().unwrap();
+        record
+    }
+    #[test]
+    fn export_rejects_ciphertext_larger_than_import_limit() {
+        let records = vec![(
+            large_export_record("\u{1}".repeat(1024), "\u{2}".repeat(1024)),
+            false,
+        )];
+        let plain = encode(&records, None, || Ok(())).unwrap();
+        assert!(
+            decode(&plain, &HashMap::new(), || Ok(())).unwrap().entries[0]
+                .record
+                .is_some()
+        );
+        assert!(matches!(
+            encode(&records, Some("synthetic-export-password"), || Ok(())),
+            Err(AppError::LimitExceeded)
+        ));
+    }
+    #[test]
+    fn export_rejects_total_size_larger_than_import_limit() {
+        let records: Vec<_> = (0..super::super::MAX_OTP_ENTRIES)
+            .map(|index| {
+                let mut record = large_export_record("\"".repeat(1024), "\"".repeat(1024));
+                record.period = index as u32 + 1;
+                (record, false)
+            })
+            .collect();
+        for password in [None, Some("synthetic-export-password")] {
+            assert!(matches!(
+                encode(&records, password, || Ok(())),
+                Err(AppError::LimitExceeded)
+            ));
+            // A smaller explicit selection remains a restorable backup.
+            let bytes = encode(&records[..500], password, || Ok(())).unwrap();
+            assert!(bytes.len() as u64 <= super::super::MAX_BACKUP_BYTES);
+            let preview = decode(&bytes, &HashMap::new(), || Ok(())).unwrap();
+            let passwords = preview
+                .keys
+                .iter()
+                .map(|key| (key.id.clone(), Zeroizing::new(password.unwrap().to_owned())))
+                .collect();
+            let restored = decode(&bytes, &passwords, || Ok(())).unwrap();
+            assert_eq!(restored.entries.len(), 500);
+            assert!(restored.entries.iter().all(|entry| entry.record.is_some()));
+        }
+    }
+    #[test]
+    fn export_rejects_more_accounts_than_import_limit() {
+        let records: Vec<_> = (0..=super::super::MAX_OTP_ENTRIES)
+            .map(|_| {
+                (
+                    crate::compatibility::uri::parse_uri(
+                        "otpauth://totp/Synthetic?secret=JBSWY3DPEHPK3PXP",
+                    )
+                    .unwrap(),
+                    false,
+                )
+            })
+            .collect();
+        assert!(matches!(
+            encode(&records, None, || Ok(())),
+            Err(AppError::LimitExceeded)
+        ));
     }
     #[test]
     fn unsupported_and_missing_keys_are_visible_and_cancellation_stops_work() {

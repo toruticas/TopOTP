@@ -7,15 +7,24 @@ pub fn copy(code: &str) -> AppResult<i64> {
         return Err(AppError::invalid("code"));
     }
     let board = NSPasteboard::generalPasteboard();
-    board.clearContents();
-    // SAFETY: Public AppKit constant; no caller-controlled pasteboard types.
-    if !board.setString_forType(&NSString::from_str(code), unsafe { NSPasteboardTypeString }) {
+    write_owned(&board, || {
+        // SAFETY: Public AppKit constant; no caller-controlled pasteboard types.
+        board.setString_forType(&NSString::from_str(code), unsafe { NSPasteboardTypeString })
+    })
+}
+fn write_owned(board: &NSPasteboard, write: impl FnOnce() -> bool) -> AppResult<i64> {
+    // Capture our ownership, not whichever application's write is current after
+    // setString returns. Another process may replace the contents immediately.
+    let change_count = board.clearContents() as i64;
+    if !write() {
         return Err(AppError::StorageUnavailable);
     }
-    Ok(board.changeCount() as i64)
+    Ok(change_count)
 }
 pub fn clear_if_owned(change_count: i64) {
-    let board = NSPasteboard::generalPasteboard();
+    clear_owned(&NSPasteboard::generalPasteboard(), change_count);
+}
+fn clear_owned(board: &NSPasteboard, change_count: i64) {
     if owns_write(board.changeCount() as i64, change_count) {
         board.clearContents();
     }
@@ -35,6 +44,49 @@ impl crate::application::ports::Clipboard for NativeClipboard {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use objc2::{
+        msg_send,
+        rc::{Retained, autoreleasepool},
+    };
+
+    struct IsolatedPasteboard(Retained<NSPasteboard>);
+    impl Drop for IsolatedPasteboard {
+        fn drop(&mut self) {
+            // SAFETY: Public NSPasteboard cleanup for this unique test board.
+            unsafe { msg_send![&*self.0, releaseGlobally] }
+        }
+    }
+
+    #[test]
+    fn replacement_between_writing_and_returning_is_preserved() {
+        autoreleasepool(|_| {
+            let isolated = IsolatedPasteboard(NSPasteboard::pasteboardWithUniqueName());
+            let board = &isolated.0;
+            let other = NSPasteboard::pasteboardWithName(&board.name());
+            // SAFETY: Public AppKit constant; only synthetic test strings.
+            let kind = unsafe { NSPasteboardTypeString };
+            for replacement in ["synthetic-other-app", "123456"] {
+                let own = write_owned(board, || {
+                    assert!(board.setString_forType(&NSString::from_str("123456"), kind));
+                    other.clearContents();
+                    assert!(other.setString_forType(&NSString::from_str(replacement), kind));
+                    true
+                })
+                .unwrap();
+                assert_ne!(own, board.changeCount() as i64);
+                clear_owned(board, own);
+                assert_eq!(other.stringForType(kind).unwrap().to_string(), replacement);
+            }
+            let own = write_owned(board, || {
+                board.setString_forType(&NSString::from_str("123456"), kind)
+            })
+            .unwrap();
+            clear_owned(board, own);
+            assert!(board.stringForType(kind).is_none());
+        });
+    }
+
     #[test]
     fn identical_text_with_new_write_is_not_owned() {
         assert!(!super::owns_write(12, 11));

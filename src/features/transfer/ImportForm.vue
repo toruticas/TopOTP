@@ -85,9 +85,14 @@ onBeforeUnmount(clearSensitive);
         }}<small v-if="row.issue">{{
           issues[row.issue] ?? 'Registro não importável'
         }}</small
-        ><small v-else
-          >{{ row.account?.kind.toUpperCase() }} ·
-          {{ row.account?.algorithm }}</small
+        ><small v-else-if="row.account"
+          >{{ row.account.kind.toUpperCase() }} · {{ row.account.algorithm }} ·
+          {{ row.account.digits }} dígitos
+          <template v-if="row.account.kind === 'totp'">
+            · Período: {{ row.account.period }} s</template
+          ><template v-else>
+            · Próximo contador: {{ row.account.nextCounter }}</template
+          ></small
         ></span
       ></label
     >
