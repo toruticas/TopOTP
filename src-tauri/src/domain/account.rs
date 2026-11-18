@@ -198,7 +198,7 @@ impl AccountRecord {
             || (self.kind == other.kind
                 && self.algorithm == other.algorithm
                 && self.digits == other.digits
-                && self.period == other.period
+                && (self.kind == OtpKind::Hotp || self.period == other.period)
                 && self.secret.bytes() == other.secret.bytes())
     }
 }

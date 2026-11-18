@@ -1,5 +1,12 @@
 import { browser, $, $$, expect } from '@wdio/globals';
-import { readFile, copyFile, mkdir, rm, stat } from 'node:fs/promises';
+import {
+  readFile,
+  writeFile,
+  copyFile,
+  mkdir,
+  rm,
+  stat,
+} from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
@@ -312,6 +319,60 @@ describe('TopOTP transfer interoperability with synthetic native adapters', () =
       ).length,
       1,
     );
+  });
+
+  it('keeps the newer HOTP counter when a duplicate changes source ID and period', async () => {
+    await clearSyntheticVault();
+    const original = Object.entries(fixture).find(
+      ([, account]) => account.type === 'hotp',
+    );
+    assert(original);
+    const [sourceId, account] = original;
+    const source = resolve(artifacts, 'hotp-period-original.json');
+    await writeFile(
+      source,
+      JSON.stringify({ [sourceId]: { ...account, period: 30, counter: 7 } }),
+    );
+    await beginImport(source);
+    await expect($('button=Importar 1 conta(s)')).toBeEnabled();
+    await commit(1);
+    const [imported] = (await presentation()).accounts;
+    assert.equal(imported.period, 30);
+    assert.equal(imported.nextCounter, '7');
+    const counter = await $('.account-card*=counter');
+    await waitForPanel(
+      async () =>
+        (await counter.$('button=Gerar próximo').isDisplayed()) &&
+        (await counter.$('button=Gerar próximo').isEnabled()),
+      'O controle Gerar próximo deve estar visível e habilitado.',
+    );
+    await counter.$('button=Gerar próximo').click();
+    await waitForPanel(
+      async () => (await counter.$('.code').getText()) === '162 583',
+      'O único clique deve emitir o HOTP 162 583.',
+    );
+    const before = (await presentation()).accounts;
+    assert.equal(before[0].nextCounter, '8');
+
+    const changedId = '44444444-4444-4444-8444-444444444444';
+    const duplicate = resolve(artifacts, 'hotp-period-duplicate.json');
+    await writeFile(
+      duplicate,
+      JSON.stringify({
+        [changedId]: { ...account, hash: changedId, period: 31, counter: 7 },
+      }),
+    );
+    await beginImport(duplicate);
+    await expect($('small=Duplicata: existente mantida')).toBeDisplayed();
+    const selection = await $('label.selection*=counter').$('input');
+    await expect(selection).toBeDisabled();
+    await expect(selection).not.toBeSelected();
+    await expect($('button=Importar 0 conta(s)')).toBeDisabled();
+    assert.deepEqual((await presentation()).accounts, before);
+    await $('button=Cancelar').click();
+    await waitForReady('button=Importar');
+    assert.equal((await $$('.account-card')).length, 1);
+    assert.deepEqual((await presentation()).accounts, before);
   });
 
   it('reimports its plain/v3 exports and keeps a newer HOTP counter on duplicates', async () => {

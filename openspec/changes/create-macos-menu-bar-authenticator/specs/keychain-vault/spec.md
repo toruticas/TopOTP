@@ -6,7 +6,7 @@ Proteger os segredos das contas e limitar sua utilização a sessões autorizada
 
 ### Requirement: Native protected persistence
 
-O app MUST persistir seeds e registros sensíveis exclusivamente em itens do Keychain tradicional do macOS, com ACL que confie no aplicativo criador para operações sensíveis. O funcionamento MUST NOT exigir conta Apple, perfil de provisionamento ou entitlements do data protection Keychain. Seeds MUST NOT ser persistidos em storage do webview, arquivos de preferências, logs ou arquivos temporários. A única saída de seeds para um arquivo MUST ser uma exportação explicitamente autorizada conforme a capacidade de compatibilidade.
+Seeds e registros sensíveis MUST persistir exclusivamente no Keychain tradicional do macOS, com ACL confiando no app criador para operações sensíveis. MUST NOT exigir conta Apple, provisionamento nem entitlements de data protection Keychain. Seeds MUST NOT persistir no storage web, preferências, logs ou temporários; sua única saída para arquivo MUST ser exportação explicitamente autorizada conforme a capacidade de compatibilidade.
 
 #### Scenario: Successful account storage
 - **WHEN** uma conta é cadastrada e o app é reiniciado
@@ -18,7 +18,7 @@ O app MUST persistir seeds e registros sensíveis exclusivamente em itens do Key
 
 ### Requirement: Native session authentication
 
-O desbloqueio MUST exigir avaliação bem-sucedida de LocalAuthentication no core nativo antes de permitir leitura de credenciais pelo aplicativo. O app MUST oferecer Touch ID quando disponível e autenticação nativa pela senha do macOS como fallback. Cancelamento, recusa ou falha MUST manter o cofre bloqueado sem ler seus seeds; uma senha mestre própria MUST NOT ser requisito para consultas normais. A autorização MUST ser produzida e mantida pelo backend, sem aceitar booleanos ou provas de sucesso fornecidos pelo frontend. O contrato MUST distinguir o bloqueio de sessão do aplicativo da ACL do Keychain: os itens não exigem biometria independentemente do processo autorizado.
+O core nativo MUST exigir sucesso de LocalAuthentication antes de ler credenciais. MUST oferecer Touch ID quando disponível e senha do macOS como fallback; cancelamento, recusa ou falha MUST manter o cofre bloqueado sem ler seeds. Consultas normais MUST NOT exigir senha mestre própria. O backend MUST criar/manter autorização sem aceitar booleanos/provas do frontend. O contrato MUST distinguir sessão do app da ACL: itens não exigem biometria independente do processo autorizado.
 
 #### Scenario: Touch ID authorizes the application session
 - **WHEN** o usuário solicita desbloqueio e LocalAuthentication aprova Touch ID no backend

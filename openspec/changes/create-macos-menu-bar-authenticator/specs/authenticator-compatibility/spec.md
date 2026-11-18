@@ -50,7 +50,7 @@ O app MUST importar objetos JSON de registros `OTPStorage` não criptografados e
 
 ### Requirement: Explicit import review and commit
 
-Importação MUST exigir sessão válida, prévia sem seeds e confirmação das entradas selecionadas. A prévia MUST informar válidas, duplicadas, inválidas e não suportadas, sem descartar entradas silenciosamente. Por padrão, duplicatas MUST manter a conta existente e o contador HOTP MUST nunca retroceder. Confirmar um subconjunto suportado MUST exigir escolha explícita do usuário; o conjunto confirmado MUST ser persistido atomicamente do ponto de vista da lista visível.
+Importar MUST exigir sessão válida, prévia sem seeds e confirmação das entradas selecionadas. A prévia MUST identificar válidas, duplicadas, inválidas e não suportadas, sem descarte silencioso. Duplicatas MUST preservar a conta existente por padrão e MUST NOT reduzir o contador HOTP. Importar um subconjunto suportado MUST exigir escolha explícita; o conjunto confirmado MUST ser persistido atomicamente para a lista visível.
 
 #### Scenario: Mixed supported and unsupported entries
 - **WHEN** o backup contém TOTP válido e uma conta Steam
@@ -63,6 +63,30 @@ Importação MUST exigir sessão válida, prévia sem seeds e confirmação das 
 #### Scenario: Duplicate HOTP with older counter
 - **WHEN** uma conta HOTP existente é reencontrada com contador inferior em um backup
 - **THEN** a conta atual é preservada e a importação não reduz seu próximo contador
+
+### Requirement: OTP identity for duplicate detection
+
+A identidade HOTP MUST ignorar período e rótulos quando seed, tipo, algoritmo e dígitos coincidem, inclusive com identificador de origem diferente. O período MUST continuar diferenciando identidades TOTP.
+
+#### Scenario: Reidentified HOTP with a different period
+- **WHEN** uma cópia HOTP com a mesma seed, algoritmo e dígitos possui outro identificador e período, e um contador inferior ao existente
+- **THEN** ela continua sinalizada como duplicata e não cria outra conta capaz de reutilizar o contador antigo
+
+#### Scenario: Equivalent HOTP entries in one backup
+- **WHEN** duas entradas HOTP de um mesmo arquivo diferem somente em origem, rótulos, período ou contador
+- **THEN** apenas a primeira entrada é elegível e a segunda é sinalizada como duplicata; confirmar o subconjunto exige reconhecimento explícito
+
+### Requirement: Duplicate revalidation at import commit
+
+O commit MUST revalidar duplicatas contra o cofre atual e o conjunto da prévia dentro da operação autorizada. Falhas de leitura ou validação MUST preservar a prévia sem persistir a seleção.
+
+#### Scenario: Vault changes after the preview
+- **WHEN** uma conta equivalente é persistida após a prévia e antes da confirmação
+- **THEN** o commit recusa a seleção duplicada, preserva a conta atual e mantém a prévia sem importar parcialmente
+
+#### Scenario: Duplicate revalidation cannot read the vault
+- **WHEN** o armazenamento falha durante a revalidação de duplicatas na confirmação
+- **THEN** nada é importado e a mesma prévia permanece disponível para nova tentativa após a recuperação
 
 ### Requirement: Bounded and versioned format handling
 
@@ -78,7 +102,7 @@ O app MUST rejeitar backups acima de 5 MiB, mais de 1000 entradas OTP, mais de 3
 
 ### Requirement: Explicit compatible export
 
-O app MUST exportar as contas selecionadas em JSON compatível com a extensão de referência, preservando os parâmetros suportados. O padrão MUST ser backup criptografado v3 com senha fornecida e confirmada para aquela operação; a senha MUST NOT ser persistida. Exportar MUST exigir nova autenticação nativa, destino escolhido pelo usuário e gravação pelo backend, retornando somente status. Exportação em texto claro MUST exigir escolha separada e reconhecimento explícito de que o arquivo conterá seeds.
+O app MUST exportar a seleção em JSON compatível com a extensão de referência, preservando parâmetros suportados. O padrão MUST ser v3 criptografado com senha fornecida e confirmada na operação, nunca persistida. Exportar MUST exigir nova autenticação nativa e destino escolhido pelo usuário; o backend MUST gravar e retornar só status. Texto claro MUST exigir escolha separada e reconhecimento explícito de que o arquivo conterá seeds.
 
 #### Scenario: Encrypted round trip
 - **WHEN** contas TOTP/HOTP são exportadas com senha em formato v3 e o arquivo é importado pela extensão de referência

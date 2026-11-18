@@ -114,7 +114,7 @@ impl Core {
                 revision: 0,
                 duplicates: HashSet::new(),
             };
-            detect_duplicates(inner, &mut pending)?;
+            pending.duplicates = detect_duplicates(inner, &pending.decoded)?;
             let out = pending.preview();
             inner.preview = Some(pending);
             Ok(out)
@@ -138,7 +138,7 @@ impl Core {
                 revision: 0,
                 duplicates: HashSet::new(),
             };
-            detect_duplicates(inner, &mut pending)?;
+            pending.duplicates = detect_duplicates(inner, &pending.decoded)?;
             let preview = pending.preview();
             inner.preview = Some(pending);
             Ok(preview)
@@ -181,16 +181,15 @@ impl Core {
             progress,
         )?;
         self.authorized(epoch, |i| {
-            let mut pending = i
-                .preview
-                .take()
+            i.preview
+                .as_ref()
                 .filter(|p| p.id == id && p.revision == revision)
                 .ok_or(AppError::Cancelled)?;
+            let duplicates = detect_duplicates(i, &decoded)?;
+            let pending = i.preview.as_mut().ok_or(AppError::Cancelled)?;
             pending.decoded = decoded;
-            detect_duplicates(i, &mut pending)?;
-            let out = pending.preview();
-            i.preview = Some(pending);
-            Ok(out)
+            pending.duplicates = duplicates;
+            Ok(pending.preview())
         })
     }
     pub fn commit_import(
@@ -211,13 +210,14 @@ impl Core {
             {
                 return Err(AppError::invalid("selection"));
             }
+            let duplicates = detect_duplicates(i, &p.decoded)?;
             for id in &selected {
                 if !p
                     .decoded
                     .entries
                     .iter()
                     .any(|e| e.record.as_ref().is_some_and(|r| r.id == *id))
-                    || p.duplicates.contains(id)
+                    || duplicates.contains(id)
                 {
                     return Err(AppError::invalid("selection"));
                 }
@@ -302,17 +302,16 @@ impl Core {
         })
     }
 }
-fn detect_duplicates(inner: &super::core::Inner, pending: &mut PendingImport) -> AppResult<()> {
-    pending.duplicates.clear();
+fn detect_duplicates(inner: &super::core::Inner, decoded: &Decoded) -> AppResult<HashSet<Uuid>> {
+    let mut duplicates = HashSet::new();
     let mut known = Vec::new();
     for r in inner.vault.references() {
         known.push(inner.vault.record(r.id)?);
     }
-    for e in &pending.decoded.entries {
+    for e in &decoded.entries {
         if let Some(record) = &e.record
             && (known.iter().any(|r| r.same_identity(record))
-                || pending
-                    .decoded
+                || decoded
                     .entries
                     .iter()
                     .take_while(|other| other.source_id != e.source_id)
@@ -323,8 +322,8 @@ fn detect_duplicates(inner: &super::core::Inner, pending: &mut PendingImport) ->
                             .is_some_and(|r| r.same_identity(record))
                     }))
         {
-            pending.duplicates.insert(record.id);
+            duplicates.insert(record.id);
         }
     }
-    Ok(())
+    Ok(duplicates)
 }

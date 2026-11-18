@@ -17,6 +17,7 @@ use zeroize::Zeroizing;
 struct Data {
     records: HashMap<Uuid, Vec<u8>>,
     reads: AtomicUsize,
+    fail_read: bool,
     fail_update: bool,
     fail_delete: bool,
 }
@@ -25,6 +26,9 @@ impl Store for Storage {
     fn read(&self, id: Uuid) -> AppResult<Option<Zeroizing<Vec<u8>>>> {
         let s = self.0.lock().unwrap();
         s.reads.fetch_add(1, Ordering::SeqCst);
+        if s.fail_read {
+            return Err(AppError::StorageUnavailable);
+        }
         Ok(s.records.get(&id).cloned().map(Zeroizing::new))
     }
     fn insert(&mut self, id: Uuid, b: &[u8]) -> AppResult<()> {
@@ -255,6 +259,265 @@ fn import_keeps_hotp_after_label_edit_and_does_not_regress_counter() {
         Some("8")
     );
 }
+#[test]
+fn hotp_import_ignores_changed_period_and_preserves_consumed_counter() {
+    let f = Fixture::new();
+    let e = f.unlock();
+    let preview = f
+        .core
+        .prepare_import(&e, synthetic_hotp_backup("original-id", 30, 7))
+        .unwrap();
+    let original = Uuid::parse_str(&preview.rows[0].account.as_ref().unwrap().id).unwrap();
+    f.core
+        .commit_import(&e, preview.id.parse().unwrap(), vec![original], false)
+        .unwrap();
+    assert_eq!(f.core.hotp(&e, original).unwrap().code, "162583");
+
+    let preview = f
+        .core
+        .prepare_import(&e, synthetic_hotp_backup("changed-id", 31, 7))
+        .unwrap();
+    assert_eq!(preview.rows[0].issue.as_deref(), Some("DuplicateKept"));
+    let duplicate = Uuid::parse_str(&preview.rows[0].account.as_ref().unwrap().id).unwrap();
+    assert!(matches!(
+        f.core
+            .commit_import(&e, preview.id.parse().unwrap(), vec![duplicate], false),
+        Err(AppError::InvalidInput { .. })
+    ));
+    let accounts = f.core.list(&e).unwrap();
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].id, original.to_string());
+    assert_eq!(accounts[0].next_counter.as_deref(), Some("8"));
+    assert_eq!(f.core.hotp(&e, original).unwrap().code, "399871");
+}
+
+fn synthetic_hotp_backup(source: &str, period: u32, counter: u64) -> Zeroizing<Vec<u8>> {
+    Zeroizing::new(
+        serde_json::to_vec(&serde_json::json!({
+            (source): {
+                "dataType": "OTPStorage",
+                "type": "hotp",
+                "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+                "account": "Synthetic RFC",
+                "period": period,
+                "counter": counter,
+            }
+        }))
+        .unwrap(),
+    )
+}
+
+#[test]
+fn import_deduplicates_hotp_periods_within_the_backup_and_requires_subset_consent() {
+    let f = Fixture::new();
+    let e = f.unlock();
+    let mut backup: serde_json::Value =
+        serde_json::from_slice(&synthetic_hotp_backup("first", 30, 8)).unwrap();
+    let second: serde_json::Value =
+        serde_json::from_slice(&synthetic_hotp_backup("second", 31, 7)).unwrap();
+    backup["first"]["index"] = serde_json::json!(0);
+    backup["second"] = second["second"].clone();
+    backup["second"]["index"] = serde_json::json!(1);
+    let preview = f
+        .core
+        .prepare_import(&e, Zeroizing::new(serde_json::to_vec(&backup).unwrap()))
+        .unwrap();
+    assert!(preview.rows[0].issue.is_none());
+    assert_eq!(preview.rows[1].issue.as_deref(), Some("DuplicateKept"));
+    let first = Uuid::parse_str(&preview.rows[0].account.as_ref().unwrap().id).unwrap();
+    let second = Uuid::parse_str(&preview.rows[1].account.as_ref().unwrap().id).unwrap();
+    let preview_id = preview.id.parse().unwrap();
+    for (ids, acknowledge) in [
+        (vec![first, second], true),
+        (vec![second], true),
+        (vec![first], false),
+    ] {
+        assert!(matches!(
+            f.core.commit_import(&e, preview_id, ids, acknowledge),
+            Err(AppError::InvalidInput { .. })
+        ));
+        assert!(f.core.list(&e).unwrap().is_empty());
+    }
+    f.core
+        .commit_import(&e, preview_id, vec![first], true)
+        .unwrap();
+    assert_eq!(f.core.list(&e).unwrap().len(), 1);
+    assert_eq!(
+        f.core.list(&e).unwrap()[0].next_counter.as_deref(),
+        Some("8")
+    );
+}
+
+#[test]
+fn import_commit_rechecks_new_vault_duplicates_and_preserves_preview_on_conflict() {
+    let f = Fixture::new();
+    let e = f.unlock();
+    let preview = f
+        .core
+        .prepare_import(&e, synthetic_hotp_backup("preview-id", 30, 7))
+        .unwrap();
+    assert!(preview.rows[0].issue.is_none());
+    let selected = Uuid::parse_str(&preview.rows[0].account.as_ref().unwrap().id).unwrap();
+    let preview_id = preview.id.parse().unwrap();
+
+    f.core
+        .save(
+            &e,
+            None,
+            crate::domain::account::AccountInput {
+                issuer: "Current vault".into(),
+                account: "Synthetic RFC".into(),
+                kind: crate::domain::account::OtpKind::Hotp,
+                algorithm: crate::domain::account::OtpAlgorithm::SHA1,
+                digits: 6,
+                period: 30,
+                next_counter: "7".into(),
+                secret: Some(Zeroizing::new("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ".into())),
+            },
+        )
+        .unwrap();
+    let current = Uuid::parse_str(&f.core.list(&e).unwrap()[0].id).unwrap();
+    assert_eq!(f.core.hotp(&e, current).unwrap().code, "162583");
+    assert!(matches!(
+        f.core.commit_import(&e, preview_id, vec![selected], false),
+        Err(AppError::InvalidInput { .. })
+    ));
+    let accounts = f.core.list(&e).unwrap();
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].id, current.to_string());
+    assert_eq!(accounts[0].next_counter.as_deref(), Some("8"));
+
+    // Explicitly removing the conflicting account allows retrying the same preview.
+    f.core.delete(&e, current).unwrap();
+    f.core
+        .commit_import(&e, preview_id, vec![selected], false)
+        .unwrap();
+    assert_eq!(f.core.list(&e).unwrap()[0].id, selected.to_string());
+}
+
+#[test]
+fn import_commit_keeps_preview_when_duplicate_revalidation_cannot_read_storage() {
+    let f = Fixture::new();
+    let e = f.unlock();
+    let existing =
+        crate::compatibility::uri::parse_uri("otpauth://totp/Existing?secret=JBSWY3DPEHPK3PXP")
+            .unwrap();
+    f.core
+        .authorized(&e, |i| i.vault.commit(vec![(existing, false)], &[]))
+        .unwrap();
+    let preview = f
+        .core
+        .prepare_import(&e, synthetic_hotp_backup("new-id", 30, 7))
+        .unwrap();
+    let selected = Uuid::parse_str(&preview.rows[0].account.as_ref().unwrap().id).unwrap();
+    let preview_id = preview.id.parse().unwrap();
+    f.data.lock().unwrap().fail_read = true;
+    assert!(matches!(
+        f.core.commit_import(&e, preview_id, vec![selected], false),
+        Err(AppError::StorageUnavailable)
+    ));
+    f.data.lock().unwrap().fail_read = false;
+    assert_eq!(f.core.list(&e).unwrap().len(), 1);
+    f.core
+        .commit_import(&e, preview_id, vec![selected], false)
+        .unwrap();
+    assert_eq!(f.core.list(&e).unwrap().len(), 2);
+}
+
+#[test]
+fn import_password_retry_keeps_preview_after_duplicate_storage_read_failure() {
+    let f = Fixture::new();
+    let e = f.unlock();
+    let existing =
+        crate::compatibility::uri::parse_uri("otpauth://totp/Existing?secret=JBSWY3DPEHPK3PXP")
+            .unwrap();
+    f.core
+        .authorized(&e, |i| i.vault.commit(vec![(existing, false)], &[]))
+        .unwrap();
+    let imported = crate::compatibility::uri::parse_uri(
+        "otpauth://hotp/Synthetic?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&counter=7",
+    )
+    .unwrap();
+    let bytes = crate::compatibility::backup::encode(
+        &[(imported, false)],
+        Some("synthetic-backup-password"),
+        || Ok(()),
+    )
+    .unwrap();
+    let preview = f.core.prepare_import(&e, bytes).unwrap();
+    let preview_id = preview.id.parse().unwrap();
+    let passwords = || {
+        HashMap::from([(
+            preview.keys[0].id.clone(),
+            Zeroizing::new("synthetic-backup-password".into()),
+        )])
+    };
+    f.data.lock().unwrap().fail_read = true;
+    assert!(matches!(
+        f.core.passwords(&e, preview_id, passwords(), |_, _| {}),
+        Err(AppError::StorageUnavailable)
+    ));
+    f.data.lock().unwrap().fail_read = false;
+    let decrypted = f
+        .core
+        .passwords(&e, preview_id, passwords(), |_, _| {})
+        .unwrap();
+    assert_eq!(decrypted.id, preview.id);
+    assert!(decrypted.rows[0].issue.is_none());
+    assert_eq!(f.core.list(&e).unwrap().len(), 1);
+    f.core
+        .commit_import(
+            &e,
+            preview_id,
+            vec![
+                decrypted.rows[0]
+                    .account
+                    .as_ref()
+                    .unwrap()
+                    .id
+                    .parse()
+                    .unwrap(),
+            ],
+            false,
+        )
+        .unwrap();
+    assert_eq!(f.core.list(&e).unwrap().len(), 2);
+}
+
+#[test]
+fn import_keeps_distinct_totp_periods_and_their_codes() {
+    let f = Fixture::new();
+    let e = f.unlock();
+    let mut backup: serde_json::Value =
+        serde_json::from_slice(&synthetic_hotp_backup("period-30", 30, 0)).unwrap();
+    backup["period-30"]["type"] = serde_json::json!("totp");
+    backup["period-60"] = backup["period-30"].clone();
+    backup["period-60"]["period"] = serde_json::json!(60);
+    let preview = f
+        .core
+        .prepare_import(&e, Zeroizing::new(serde_json::to_vec(&backup).unwrap()))
+        .unwrap();
+    assert_eq!(preview.rows.len(), 2);
+    assert!(preview.rows.iter().all(|r| r.issue.is_none()));
+    let selected = preview
+        .rows
+        .iter()
+        .map(|r| r.account.as_ref().unwrap().id.parse().unwrap())
+        .collect();
+    f.core
+        .commit_import(&e, preview.id.parse().unwrap(), selected, false)
+        .unwrap();
+    let mut codes: Vec<_> = f
+        .core
+        .totp(&e)
+        .unwrap()
+        .into_iter()
+        .map(|c| c.code)
+        .collect();
+    codes.sort();
+    assert_eq!(codes, ["287082", "755224"]);
+}
+
 #[test]
 fn plaintext_export_never_overwrites_and_lock_prevents_destination_creation() {
     let f = Fixture::new();

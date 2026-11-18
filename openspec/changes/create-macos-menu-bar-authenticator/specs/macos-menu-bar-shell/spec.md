@@ -34,7 +34,7 @@ O app MUST abrir ou ocultar seu painel por clique no ícone, posicionando-o imed
 
 ### Requirement: Short-lived panel state
 
-Ocultar o painel MUST conservar somente em memória tela ativa, busca, posição de rolagem/foco, seleção de contas e campos não secretos por menos de 30 segundos, enquanto a sessão nativa permanecer válida. Senhas, seeds/URIs digitados e códigos MUST ser limpos ao ocultar. Reabrir MUST consultar a sessão nativa antes de revelar o conteúdo e atualizar os códigos sem consumir HOTP. Completar 30 segundos oculto, bloquear ou expirar a sessão MUST descartar a retomada. Ocultações repetidas MUST NOT estender o prazo e nenhum estado de retomada MUST ser persistido em disco/storage web.
+Ocultar MUST conservar só em memória tela ativa, busca, rolagem/foco, seleção de contas e campos não secretos por menos de 30 segundos, com sessão nativa válida; MUST limpar senhas, seeds/URIs digitados e códigos. Reabrir MUST consultar a sessão nativa antes de revelar conteúdo e atualizar códigos sem consumir HOTP. Aos 30s oculto, bloqueio ou expiração MUST descartar a retomada. Ocultações repetidas MUST NOT renovar o prazo; a retomada MUST NOT persistir em disco/storage web.
 
 #### Scenario: Quick return to an unfinished screen
 - **WHEN** o usuário clica fora e reabre pelo ícone antes de 30 segundos, na mesma sessão autorizada
