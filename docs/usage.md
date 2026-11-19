@@ -14,7 +14,7 @@ A prévia informa tipo, algoritmo e dígitos, além do período TOTP ou próximo
 
 **Importar** abre um seletor nativo. JSON claro e Authenticator v3 são processados no core. Backups com várias chaves pedem as senhas separadamente. Revise as contas/motivos de rejeição e escolha a seleção; importar um subconjunto exige reconhecimento explícito. Duplicatas preservam o existente, inclusive seu contador. Cancelamento/bloqueio apagam a prévia. O arquivo original não é alterado.
 
-**Exportar** seleciona contas e usa v3 criptografado por padrão. Confirme a senha do backup, autentique novamente no macOS e escolha o destino. Guarde essa senha separadamente. Exportação clara exige reconhecimento e um arquivo novo; não sobrescreve um arquivo existente. Backups são gravados pelo core, com permissão 0600, sem JSON devolvido ao webview.
+**Exportar** seleciona contas e usa v3 criptografado por padrão. Use uma frase-senha única com pelo menos 16 caracteres, de preferência várias palavras aleatórias. Confirme a senha, autentique novamente no macOS e escolha o destino. O formato Authenticator v3 é compatível com a extensão, mas não autentica a integridade do backup; importe somente arquivos de origem confiável. Guarde essa senha separadamente. Exportação clara exige reconhecimento e um arquivo novo; não sobrescreve um arquivo existente. Backups são gravados pelo core, com permissão 0600, sem JSON devolvido ao webview.
 
 O envelope v3 mantém compatibilidade com a extensão, mas AES-CBC nesse formato não autentica integridade. Preserve o arquivo em local confiável. Não use esse envelope como formato de cofre local.
 
