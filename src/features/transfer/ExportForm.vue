@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount } from 'vue';
+import { computed, ref, onBeforeUnmount } from 'vue';
 import type { AccountSummary } from '../../lib/ipc';
 const props = defineProps<{ accounts: AccountSummary[]; busy: boolean }>();
 const emit = defineEmits<{
@@ -17,7 +17,21 @@ const encrypted = ref(true);
 const password = ref('');
 const confirmation = ref('');
 const acknowledge = ref(false);
+const minBackupPasswordChars = 16;
+const passwordValid = computed(
+  () =>
+    Array.from(password.value.trim()).length >= minBackupPasswordChars &&
+    new TextEncoder().encode(password.value).length <= 1024 &&
+    password.value === confirmation.value,
+);
+const canSubmit = computed(
+  () =>
+    !props.busy &&
+    selected.value.length > 0 &&
+    (encrypted.value ? passwordValid.value : acknowledge.value),
+);
 function submit() {
+  if (!canSubmit.value) return;
   const p = password.value;
   const c = confirmation.value;
   password.value = '';
@@ -67,7 +81,9 @@ onBeforeUnmount(clearSensitive);
           autocomplete="new-password"
       /></label>
       <p class="hint">
-        Guarde a senha: ela será necessária para importar este backup.
+        Use uma frase-senha única com pelo menos {{ minBackupPasswordChars }}
+        caracteres, de preferência várias palavras aleatórias. Guarde-a
+        separadamente: ela será necessária para importar este backup.
       </p></template
     >
     <label v-else class="selection warning"
@@ -79,14 +95,7 @@ onBeforeUnmount(clearSensitive);
     <p class="hint">
       O macOS pedirá Touch ID ou senha novamente antes da exportação.
     </p>
-    <button
-      class="primary"
-      :disabled="
-        busy ||
-        !selected.length ||
-        (encrypted ? !password || password !== confirmation : !acknowledge)
-      "
-    >
+    <button class="primary" :disabled="!canSubmit">
       {{ busy ? 'Exportando…' : 'Autorizar e salvar backup' }}
     </button>
   </form>

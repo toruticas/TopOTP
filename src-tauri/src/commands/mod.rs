@@ -271,6 +271,36 @@ pub struct ExportRequest {
     confirmation: Zeroizing<String>,
     acknowledge_plaintext: bool,
 }
+const MIN_EXPORT_PASSWORD_CHARS: usize = 16;
+
+fn validate_backup_password(password: &str, confirmation: &str) -> AppResult<()> {
+    if password.trim().chars().count() < MIN_EXPORT_PASSWORD_CHARS
+        || password.len() > 1024
+        || password != confirmation
+    {
+        return Err(AppError::invalid("passwordConfirmation"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod export_password_tests {
+    use super::validate_backup_password;
+
+    #[test]
+    fn accepts_long_backup_passwords_and_matching_confirmation() {
+        let password = "lago-violeta-porto-sinal";
+        assert!(validate_backup_password(password, password).is_ok());
+        assert!(validate_backup_password("🔐abcdefghijklmno", "🔐abcdefghijklmno").is_ok());
+        assert!(validate_backup_password(password, "senha diferente").is_err());
+        assert!(validate_backup_password("senha curta", "senha curta").is_err());
+        let padded = "           curta       ";
+        assert!(validate_backup_password(padded, padded).is_err());
+        let oversized = "🔐".repeat(257);
+        assert!(validate_backup_password(&oversized, &oversized).is_err());
+    }
+}
+
 #[tauri::command]
 pub async fn export_accounts(
     window: WebviewWindow,
@@ -287,8 +317,8 @@ pub async fn export_accounts(
     } = request;
     client(&window)?;
     core.authorized(&epoch, |_| Ok(()))?;
-    if encrypted && (password.is_empty() || password.len() > 1024 || *password != *confirmation) {
-        return Err(AppError::invalid("passwordConfirmation"));
+    if encrypted {
+        validate_backup_password(&password, &confirmation)?;
     }
     if !encrypted && !acknowledge_plaintext {
         return Err(AppError::invalid("acknowledgePlaintext"));
